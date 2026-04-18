@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SkillTok - Learn Skills Fast</title>
+    <meta name="description" content="SkillTok is a short-video-based learning platform. Learn tech, business, and soft skills through engaging bite-sized videos.">
+    <!-- Google Fonts for Modern Typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-container">
+        
+        <!-- Top Navigation / Category Bar -->
+        <header class="top-nav">
+            <div class="logo" style="display: flex; align-items: center; gap: 10px;">
+                <img src="logo.png" alt="Logo" style="height: 32px; width: 32px; border-radius: 8px;">
+                SkillTok
+            </div>
+            <div class="category-scroll">
+                <button class="category-chip active">For You</button>
+                <button class="category-chip">Motivation</button>
+                <button class="category-chip">Courses</button>
+                <button class="category-chip">Kids Special</button>
+                <button class="category-chip">Youth</button>
+                <button class="category-chip">Farming</button>
+                <button class="category-chip">World</button>
+                <button class="category-chip">Tech</button>
+                <button class="category-chip">Business</button>
+            </div>
+        </header>
+
+        <main class="video-feed" id="videoFeed">
+            <!-- Dynamic videos will be injected here by JS -->
+        </main>
+        
+        <script>
+            // Fetch videos from the database
+            async function loadDynamicFeed() {
+                const feedContainer = document.getElementById('videoFeed');
+                try {
+                    const res = await fetch('/api/feed');
+                    const data = await res.json();
+                    
+                    if (data.success && data.videos.length > 0) {
+                        feedContainer.innerHTML = ''; // Clear loading
+                        data.videos.forEach(video => {
+                            const html = `
+                            <div class="video-container">
+                                <video src="${video.url}" loop playsinline></video>
+                                <div class="video-overlay-top"></div>
+                                <div class="video-overlay-bottom"></div>
+
+                                <div class="action-sidebar">
+                                    <div class="action-btn" onclick="toggleLike(this)">
+                                        <i class="fa-solid fa-heart"></i>
+                                        <span>${video.likes}</span>
+                                    </div>
+                                    <div class="action-btn">
+                                        <i class="fa-solid fa-comment-dots"></i>
+                                        <span>${Math.floor(Math.random() * 100)}</span>
+                                    </div>
+                                    <div class="action-btn">
+                                        <i class="fa-solid fa-bookmark"></i>
+                                        <span>Save</span>
+                                    </div>
+                                    <div class="action-btn">
+                                        <i class="fa-solid fa-share"></i>
+                                        <span>Share</span>
+                                    </div>
+                                    <div class="profile-pic">
+                                        <img src="https://ui-avatars.com/api/?name=${encodeURIComponent(video.author_name)}&background=random&color=fff" alt="Profile">
+                                        <div class="follow-badge"><i class="fa-solid fa-plus"></i></div>
+                                    </div>
+                                </div>
+
+                                <div class="video-info">
+                                    <h2 class="creator-name">${video.handle} <span style="font-size:0.8rem; opacity:0.8; margin-left:10px;">${video.category}</span></h2>
+                                    <p class="video-desc">${video.title}</p>
+                                    <div class="music-ticker">
+                                        <i class="fa-solid fa-music"></i>
+                                        <marquee scrollamount="4">Original Audio - ${video.author_name}</marquee>
+                                    </div>
+                                </div>
+                            </div>`;
+                            feedContainer.innerHTML += html;
+                        });
+                        
+                        // Re-initialize intersection observer for new videos
+                        initVideoObserver();
+                    } else {
+                        // Fallback if no videos in DB
+                        feedContainer.innerHTML = `
+                            <div class="video-container">
+                                <video src="https://www.w3schools.com/html/mov_bbb.mp4" loop playsinline muted></video>
+                                <div class="video-overlay-top"></div>
+                                <div class="video-overlay-bottom"></div>
+                                <div class="action-sidebar">
+                                    <div class="action-btn" onclick="toggleLike(this)"><i class="fa-solid fa-heart"></i><span>0</span></div>
+                                </div>
+                                <div class="video-info">
+                                    <h2 class="creator-name">@SkillTokOfficial</h2>
+                                    <p class="video-desc">Welcome! Click the + button below to be the first to upload a video! 🚀</p>
+                                </div>
+                            </div>`;
+                        initVideoObserver();
+                    }
+                } catch (err) {
+                    console.error("Failed to load feed", err);
+                }
+            }
+            
+            function initVideoObserver() {
+                const videos = document.querySelectorAll("video");
+                const observerOptions = { root: null, rootMargin: "0px", threshold: 0.6 };
+                const videoObserver = new IntersectionObserver((entries) => {
+                    entries.forEach(entry => {
+                        if (entry.isIntersecting) {
+                            entry.target.play().catch(e => console.log("Auto-play prevented", e));
+                        } else {
+                            entry.target.pause();
+                            entry.target.currentTime = 0;
+                        }
+                    });
+                }, observerOptions);
+
+                videos.forEach(video => {
+                    videoObserver.observe(video);
+                    video.addEventListener('click', () => {
+                        if (video.paused) video.play();
+                        else video.pause();
+                    });
+                });
+            }
+            
+            document.addEventListener('DOMContentLoaded', loadDynamicFeed);
+        </script>
+
+        <!-- Bottom Navigation Bar -->
+        <nav class="bottom-nav">
+            <a href="index.html" class="nav-item active">
+                <i class="fa-solid fa-house"></i>
+                <span>Home</span>
+            </a>
+            <a href="discover.html" class="nav-item">
+                <i class="fa-solid fa-compass"></i>
+                <span>Discover</span>
+            </a>
+            <a href="upload.html" class="nav-item upload-btn">
+                <div class="upload-icon-wrapper">
+                    <i class="fa-solid fa-plus"></i>
+                </div>
+            </a>
+            <a href="inbox.html" class="nav-item">
+                <i class="fa-solid fa-message"></i>
+                <span>Inbox</span>
+            </a>
+            <a href="profile.html" class="nav-item">
+                <i class="fa-solid fa-user"></i>
+                <span>Profile</span>
+            </a>
+        </nav>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>

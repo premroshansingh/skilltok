@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Discover - SkillTok</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .search-bar {
+            background: var(--surface-glass);
+            border: 1px solid rgba(255,255,255,0.1);
+            padding: 12px 20px;
+            border-radius: 30px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .search-bar input {
+            background: transparent;
+            border: none;
+            color: white;
+            outline: none;
+            width: 100%;
+            font-size: 1rem;
+        }
+        .search-bar input::placeholder {
+            color: var(--text-secondary);
+        }
+        .section-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.2rem;
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .trending-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+        .trending-card {
+            height: 120px;
+            border-radius: 15px;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: flex-end;
+            padding: 15px;
+            background-size: cover;
+            background-position: center;
+        }
+        .trending-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: linear-gradient(to top, rgba(0,0,0,0.8), rgba(0,0,0,0.1));
+        }
+        .trending-card span {
+            position: relative;
+            z-index: 2;
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+        .ai-recommendation {
+            background: linear-gradient(135deg, rgba(0, 242, 254, 0.1), rgba(79, 172, 254, 0.1));
+            border: 1px solid var(--primary-color);
+        }
+        .ai-recommendation h3 {
+            color: var(--primary-color);
+            margin-bottom: 8px;
+            font-size: 1.1rem;
+        }
+        .ai-recommendation p {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin-bottom: 15px;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: var(--bg-darker);
+            border: none;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        
+        <header class="page-header">
+            <h1>Discover</h1>
+        </header>
+
+        <main class="content-area">
+            <div class="search-bar">
+                <i class="fa-solid fa-magnifying-glass text-secondary"></i>
+                <input type="text" placeholder="Search skills, creators, topics...">
+            </div>
+
+            <!-- AI Recommended Section -->
+            <div class="glass-card ai-recommendation">
+                <div class="flex justify-between items-center mb-2">
+                    <h3><i class="fa-solid fa-wand-magic-sparkles"></i> AI Picks for You</h3>
+                </div>
+                <p>Based on your recent interest in "Web Development"</p>
+                <button class="btn-primary">Start Learning React</button>
+            </div>
+
+            <h2 class="section-title">Trending Categories <span style="font-size: 0.8rem; color: var(--primary-color);">See all</span></h2>
+            
+            <div class="trending-grid">
+                <div class="trending-card" style="background-image: url('https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=400&q=80');">
+                    <span>Frontend Dev</span>
+                </div>
+                <div class="trending-card" style="background-image: url('https://images.unsplash.com/photo-1542744173-8e7e53415bb0?w=400&q=80');">
+                    <span>Business</span>
+                </div>
+                <div class="trending-card" style="background-image: url('https://images.unsplash.com/photo-1561070791-2526d30994b5?w=400&q=80');">
+                    <span>Graphic Design</span>
+                </div>
+                <div class="trending-card" style="background-image: url('https://images.unsplash.com/photo-1552664730-d307ca884978?w=400&q=80');">
+                    <span>Public Speaking</span>
+                </div>
+            </div>
+
+        </main>
+
+        <!-- Bottom Navigation Bar -->
+        <nav class="bottom-nav">
+            <a href="index.html" class="nav-item">
+                <i class="fa-solid fa-house"></i>
+                <span>Home</span>
+            </a>
+            <a href="discover.html" class="nav-item active">
+                <i class="fa-solid fa-compass"></i>
+                <span>Discover</span>
+            </a>
+            <a href="upload.html" class="nav-item upload-btn">
+                <div class="upload-icon-wrapper">
+                    <i class="fa-solid fa-plus"></i>
+                </div>
+            </a>
+            <a href="inbox.html" class="nav-item">
+                <i class="fa-solid fa-message"></i>
+                <span>Inbox</span>
+            </a>
+            <a href="profile.html" class="nav-item">
+                <i class="fa-solid fa-user"></i>
+                <span>Profile</span>
+            </a>
+        </nav>
+    </div>
+</body>
+</html>

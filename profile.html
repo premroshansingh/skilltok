@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Profile - SkillTok</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .profile-header {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px 0;
+            text-align: center;
+        }
+        .profile-avatar {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            border: 3px solid var(--primary-color);
+            margin-bottom: 15px;
+            padding: 3px;
+        }
+        .profile-avatar img {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            object-fit: cover;
+        }
+        .profile-name {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.5rem;
+            margin-bottom: 5px;
+        }
+        .profile-handle {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            margin-bottom: 15px;
+        }
+        .stats-row {
+            display: flex;
+            justify-content: space-around;
+            width: 100%;
+            padding: 0 20px;
+            margin-bottom: 20px;
+        }
+        .stat-box {
+            text-align: center;
+        }
+        .stat-num {
+            font-weight: 700;
+            font-size: 1.2rem;
+            color: var(--text-primary);
+        }
+        .stat-label {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+        
+        .gamification-section {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .streak-card {
+            flex: 1;
+            background: linear-gradient(135deg, #FF9A9E 0%, #FECFEF 99%, #FECFEF 100%);
+            border-radius: 15px;
+            padding: 15px;
+            color: #000;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .streak-card i {
+            font-size: 2rem;
+            color: #FF2E93;
+        }
+        .badges-card {
+            flex: 1;
+            background: linear-gradient(135deg, var(--surface-glass), rgba(255,255,255,0.02));
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 15px;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+        .badge-icons {
+            display: flex;
+            gap: 5px;
+            margin-top: 5px;
+        }
+        .badge-icons i {
+            color: #FFD700;
+            font-size: 1.2rem;
+        }
+        
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            margin-bottom: 15px;
+        }
+        .tab {
+            flex: 1;
+            text-align: center;
+            padding: 10px 0;
+            color: var(--text-secondary);
+            font-weight: 500;
+            cursor: pointer;
+            position: relative;
+        }
+        .tab.active {
+            color: var(--primary-color);
+        }
+        .tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: -1px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 40px;
+            height: 2px;
+            background: var(--primary-color);
+        }
+        
+        .video-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 2px;
+        }
+        .grid-item {
+            aspect-ratio: 9/16;
+            background-color: var(--surface-glass);
+            background-size: cover;
+            background-position: center;
+            position: relative;
+        }
+        .grid-item .views {
+            position: absolute;
+            bottom: 5px;
+            left: 5px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            text-shadow: 1px 1px 2px #000;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        
+        <header class="page-header" style="display: flex; justify-content: space-between; align-items: center;">
+            <i class="fa-solid fa-user-plus"></i>
+            <h1>Profile</h1>
+            <i class="fa-solid fa-right-from-bracket" id="logoutBtn" style="cursor: pointer; color: #ff4d4d;"></i>
+        </header>
+
+        <script>
+            document.getElementById('logoutBtn').addEventListener('click', async () => {
+                await fetch('/api/logout', { method: 'POST' });
+                window.location.href = '/login';
+            });
+        </script>
+
+        <main class="content-area" style="padding-top: 0;">
+            
+            <div class="profile-header">
+                <div class="profile-avatar">
+                    <img id="profileImage" src="https://ui-avatars.com/api/?name=User&background=4FACFE&color=fff" alt="User">
+                </div>
+                <h2 class="profile-name" id="profileName">Loading...</h2>
+                <p class="profile-handle" id="profileHandle">@loading</p>
+                
+                <div class="stats-row">
+                    <div class="stat-box">
+                        <div class="stat-num" id="statVideos">0</div>
+                        <div class="stat-label">Videos</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-num" id="statViews">0</div>
+                        <div class="stat-label">Views</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-num" id="statLikes">0</div>
+                        <div class="stat-label">Likes</div>
+                    </div>
+                </div>
+            </div>
+
+            <script>
+                // Fetch dynamic user info
+                fetch('/api/me').then(res => res.json()).then(data => {
+                    if (data.success) {
+                        document.getElementById('profileName').innerText = data.user.name;
+                        document.getElementById('profileHandle').innerText = data.user.handle;
+                        document.getElementById('profileImage').src = `https://ui-avatars.com/api/?name=${encodeURIComponent(data.user.name)}&background=4FACFE&color=fff`;
+                        
+                        // Update dynamic stats
+                        document.getElementById('statVideos').innerText = data.user.stats.videos;
+                        document.getElementById('statViews').innerText = data.user.stats.views;
+                        document.getElementById('statLikes').innerText = data.user.stats.likes;
+                        
+                        // Render dynamic badges
+                        const badgeContainer = document.getElementById('dynamicBadges');
+                        badgeContainer.innerHTML = ''; // Clear hardcoded
+                        data.user.badges.forEach(badge => {
+                            badgeContainer.innerHTML += `<i class="${badge.icon}" title="${badge.name}"></i>`;
+                        });
+                    }
+                });
+                
+                // Fetch user's uploaded videos
+                fetch('/api/my_videos').then(res => res.json()).then(data => {
+                    const grid = document.getElementById('myVideoGrid');
+                    if (data.success && data.videos.length > 0) {
+                        grid.innerHTML = '';
+                        data.videos.forEach(v => {
+                            // Render an actual HTML5 video element but muted and auto-played for a "thumbnail" effect just like Instagram
+                            grid.innerHTML += `
+                            <div class="grid-item" style="overflow: hidden; background: #000; display: flex; align-items: center; justify-content: center; position: relative;">
+                                <video src="${v.url}" style="width: 100%; height: 100%; object-fit: cover;" muted loop onmouseover="this.play()" onmouseout="this.pause()"></video>
+                                <div class="views"><i class="fa-solid fa-play"></i> ${v.views}</div>
+                            </div>`;
+                        });
+                    } else {
+                        grid.innerHTML = `
+                            <div style="grid-column: 1 / -1; text-align: center; color: var(--text-secondary); padding: 40px 0;">
+                                <i class="fa-solid fa-camera" style="font-size: 2rem; margin-bottom: 10px;"></i>
+                                <div>No videos uploaded yet.</div>
+                            </div>`;
+                    }
+                });
+            </script>
+
+            <!-- Gamification Section -->
+            <div class="gamification-section">
+                <div class="streak-card">
+                    <i class="fa-solid fa-fire"></i>
+                    <div>
+                        <div style="font-weight: 700; font-size: 1.1rem;">7 Days</div>
+                        <div style="font-size: 0.8rem; font-weight: 500;">Learning Streak!</div>
+                    </div>
+                </div>
+                <div class="badges-card">
+                    <div style="font-size: 0.85rem; color: var(--text-secondary);">Earned Badges</div>
+                    <div class="badge-icons" id="dynamicBadges">
+                        <i class="fa-solid fa-spinner fa-spin"></i>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Content Tabs -->
+            <div class="tabs">
+                <div class="tab active"><i class="fa-solid fa-border-all"></i></div>
+                <div class="tab"><i class="fa-solid fa-lock"></i></div>
+                <div class="tab"><i class="fa-solid fa-bookmark"></i></div>
+                <div class="tab"><i class="fa-solid fa-heart"></i></div>
+            </div>
+
+            <div class="video-grid" id="myVideoGrid">
+                <!-- Videos will be loaded here dynamically -->
+                <div style="grid-column: 1 / -1; text-align: center; color: var(--text-secondary); padding: 40px 0;">
+                    Loading your videos...
+                </div>
+            </div>
+
+        </main>
+
+        <!-- Bottom Navigation Bar -->
+        <nav class="bottom-nav">
+            <a href="index.html" class="nav-item">
+                <i class="fa-solid fa-house"></i>
+                <span>Home</span>
+            </a>
+            <a href="discover.html" class="nav-item">
+                <i class="fa-solid fa-compass"></i>
+                <span>Discover</span>
+            </a>
+            <a href="upload.html" class="nav-item upload-btn">
+                <div class="upload-icon-wrapper">
+                    <i class="fa-solid fa-plus"></i>
+                </div>
+            </a>
+            <a href="inbox.html" class="nav-item">
+                <i class="fa-solid fa-message"></i>
+                <span>Inbox</span>
+            </a>
+            <a href="profile.html" class="nav-item active">
+                <i class="fa-solid fa-user"></i>
+                <span>Profile</span>
+            </a>
+        </nav>
+    </div>
+</body>
+</html>

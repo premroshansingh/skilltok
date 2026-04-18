@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Sign Up - SkillTok</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .login-container {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            padding: 20px;
+        }
+        .login-box {
+            background: var(--surface-glass);
+            border: 1px solid rgba(255,255,255,0.1);
+            padding: 30px;
+            border-radius: 20px;
+            width: 100%;
+            max-width: 400px;
+            backdrop-filter: blur(10px);
+            text-align: center;
+        }
+        .login-box h2 {
+            font-family: 'Outfit', sans-serif;
+            margin-bottom: 5px;
+            font-size: 1.8rem;
+        }
+        .login-box p {
+            color: var(--text-secondary);
+            margin-bottom: 25px;
+            font-size: 0.9rem;
+        }
+        .form-group {
+            margin-bottom: 15px;
+            text-align: left;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+        .form-control {
+            width: 100%;
+            background: rgba(0,0,0,0.2);
+            border: 1px solid rgba(255,255,255,0.1);
+            padding: 12px 15px;
+            border-radius: 10px;
+            color: white;
+            font-family: inherit;
+            outline: none;
+            transition: border 0.3s;
+        }
+        .form-control:focus {
+            border-color: var(--primary-color);
+        }
+        .btn-primary {
+            width: 100%;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: var(--bg-darker);
+            border: none;
+            padding: 12px;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            margin-top: 10px;
+            box-shadow: 0 4px 15px rgba(0,242,254,0.3);
+            transition: transform 0.2s;
+        }
+        .btn-primary:active {
+            transform: scale(0.98);
+        }
+        .error-msg {
+            color: #ff4d4d;
+            font-size: 0.85rem;
+            margin-top: 10px;
+            display: none;
+        }
+        .auth-link {
+            margin-top: 20px;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+        .auth-link a {
+            color: var(--primary-color);
+            text-decoration: none;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container" style="background: url('https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=800&q=80') center/cover;">
+        <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(11, 17, 32, 0.85);"></div>
+        
+        <div class="login-container" style="position: relative; z-index: 1;">
+            <div class="logo" style="font-size: 2.5rem; margin-bottom: 30px; display: flex; align-items: center; justify-content: center; gap: 15px;">
+                <img src="logo.png" alt="Logo" style="height: 50px; width: 50px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,242,254,0.3);">
+                SkillTok
+            </div>
+            
+            <div class="login-box">
+                <h2>Create Account</h2>
+                <p>Join the community and start learning</p>
+                
+                <div id="step1">
+                    <form id="signupFormPart1">
+                        <div class="form-group">
+                            <label>Full Name</label>
+                            <input type="text" id="name" class="form-control" required placeholder="e.g. John Doe">
+                        </div>
+                        <div class="form-group">
+                            <label>Choose Username</label>
+                            <input type="text" id="username" class="form-control" required placeholder="e.g. johndoe123">
+                        </div>
+                        <div class="form-group">
+                            <label>Password</label>
+                            <input type="password" id="password" class="form-control" required placeholder="Create password">
+                        </div>
+                        <button type="submit" class="btn-primary">Next Step <i class="fa-solid fa-arrow-right" style="margin-left: 5px;"></i></button>
+                    </form>
+                    
+                    <div class="auth-link">
+                        Already have an account? <a href="/login">Log In</a>
+                    </div>
+                </div>
+
+                <div id="step2" style="display: none;">
+                    <div style="margin-bottom: 20px;">
+                        <img id="demoAvatar" src="" alt="Demo Avatar" style="width: 80px; height: 80px; border-radius: 50%; border: 3px solid var(--primary-color);">
+                        <h3 id="demoName" style="margin-top: 10px; font-family: 'Outfit', sans-serif;"></h3>
+                        <p style="font-size: 0.85rem; color: var(--text-secondary);">Select the skills you want to learn</p>
+                    </div>
+
+                    <div class="categories-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; text-align: left; max-height: 220px; overflow-y: auto; padding-right: 5px;">
+                        <!-- Tech & Career -->
+                        <label style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 10px; cursor: pointer; display: flex; gap: 10px; align-items: center;">
+                            <input type="checkbox" value="Coding" class="cat-cb"> Coding & Tech
+                        </label>
+                        <label style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 10px; cursor: pointer; display: flex; gap: 10px; align-items: center;">
+                            <input type="checkbox" value="Business" class="cat-cb"> Business
+                        </label>
+                        <!-- Growth & Mindset -->
+                        <label style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 10px; cursor: pointer; display: flex; gap: 10px; align-items: center;">
+                            <input type="checkbox" value="Motivation" class="cat-cb"> Motivation
+                        </label>
+                        <label style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 10px; cursor: pointer; display: flex; gap: 10px; align-items: center;">
+                            <input type="checkbox" value="SoftSkills" class="cat-cb"> Soft Skills
+                        </label>
+                        <!-- Education -->
+                        <label style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 10px; cursor: pointer; display: flex; gap: 10px; align-items: center;">
+                            <input type="checkbox" value="Courses" class="cat-cb"> Courses & Academics
+                        </label>
+                        <label style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 10px; cursor: pointer; display: flex; gap: 10px; align-items: center;">
+                            <input type="checkbox" value="Kids" class="cat-cb"> Kids Special (Under 12)
+                        </label>
+                        <!-- Lifestyle & Older Adults -->
+                        <label style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 10px; cursor: pointer; display: flex; gap: 10px; align-items: center;">
+                            <input type="checkbox" value="Youth" class="cat-cb"> Youth Trends
+                        </label>
+                        <label style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 10px; cursor: pointer; display: flex; gap: 10px; align-items: center;">
+                            <input type="checkbox" value="Farming" class="cat-cb"> Farming & Agriculture
+                        </label>
+                        <label style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 10px; cursor: pointer; display: flex; gap: 10px; align-items: center;">
+                            <input type="checkbox" value="DIY" class="cat-cb"> DIY & Gardening
+                        </label>
+                        <label style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 10px; cursor: pointer; display: flex; gap: 10px; align-items: center;">
+                            <input type="checkbox" value="World" class="cat-cb"> World & Culture
+                        </label>
+                    </div>
+
+                    <div id="errorMsg" class="error-msg">Registration failed.</div>
+                    <button id="finalSubmit" class="btn-primary">Finish Sign Up</button>
+                    <button id="goBackBtn" style="background: transparent; border: none; color: var(--text-secondary); margin-top: 15px; cursor: pointer;">Go Back</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('signupFormPart1').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const name = document.getElementById('name').value;
+            if(!name) return;
+            
+            // Show Step 2
+            document.getElementById('step1').style.display = 'none';
+            document.getElementById('step2').style.display = 'block';
+            
+            // Populate demo info
+            document.getElementById('demoName').innerText = name;
+            document.getElementById('demoAvatar').src = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=4FACFE&color=fff&size=150`;
+        });
+
+        document.getElementById('goBackBtn').addEventListener('click', () => {
+            document.getElementById('step2').style.display = 'none';
+            document.getElementById('step1').style.display = 'block';
+        });
+
+        document.getElementById('finalSubmit').addEventListener('click', async () => {
+            const name = document.getElementById('name').value;
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            // Get selected categories
+            const checkboxes = document.querySelectorAll('.cat-cb:checked');
+            const categories = Array.from(checkboxes).map(cb => cb.value);
+
+            const errorMsg = document.getElementById('errorMsg');
+            
+            try {
+                const res = await fetch('/api/signup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, username, password, categories })
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                    window.location.href = '/';
+                } else {
+                    errorMsg.style.display = 'block';
+                    errorMsg.innerText = data.message || "Registration failed";
+                }
+            } catch (err) {
+                console.error(err);
+                errorMsg.style.display = 'block';
+                errorMsg.innerText = "Connection error.";
+            }
+        });
+    </script>
+</body>
+</html>

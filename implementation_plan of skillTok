@@ -1,0 +1,49 @@
+# SkillTok Implementation Plan
+
+We are going to build **SkillTok**, a mobile-first, short-video learning platform web application. We'll build a responsive web application that provides an app-like experience (similar to TikTok/Reels) focused on micro-learning. 
+
+## User Review Required
+
+> [!IMPORTANT]
+> Since the original tech stack suggested React Native/Flutter for a mobile app, I propose we build this as a **Next.js Web Application** designed with a mobile-first "app-like" UI. This ensures it's easily accessible on all devices while still feeling like a native mobile app. Please confirm if this approach works for you!
+
+> [!NOTE]
+> We will be utilizing **Vanilla CSS** with a robust design system to achieve the requested modern, glassmorphic, and dynamic look with a sleek dark mode.
+
+## Open Questions
+
+> [!CAUTION]
+> 1. **Data & Videos**: For the initial version, should we use mock data and placeholder videos to demonstrate the UI and interactions, or do you have a specific backend/API ready to connect?
+> 2. **Authentication**: Do you want to implement real user authentication (e.g., NextAuth) or just a mock login flow for the prototype?
+> 3. **Framework**: I'll use **Next.js** for the framework. Is this acceptable?
+
+## Proposed Changes
+
+We will bootstrap a new Next.js application and implement the following architecture:
+
+### 1. Foundation & Setup
+- Initialize Next.js project.
+- Set up a premium UI design system in `globals.css` with CSS variables for dark mode, vibrant accents, and smooth animations.
+
+### 2. Core Components
+- **VideoPlayer Component**: A highly optimized video player for vertical, short-form content with auto-play, pause on scroll, and interaction overlays (likes, comments, share).
+- **Bottom Navigation Bar**: Mobile app-style fixed bottom navigation (Home, Discover, Upload, Profile).
+- **Top Category Bar**: Scrollable category chips (Tech, Business, Soft Skills).
+- **Gamification Elements**: Badges and streak UI components.
+
+### 3. Application Pages
+- **Home Feed (`/`)**: The main vertical scrolling feed of educational short videos.
+- **Discover (`/discover`)**: AI-recommended categories and trending skills.
+- **Profile & Dashboard (`/profile`)**: User progress, earned badges, streaks, and saved learning playlists.
+- **Upload (`/upload`)**: A creator interface to upload 30-90s videos.
+
+## Verification Plan
+
+### Automated Tests
+- Run Next.js build process to ensure zero compilation errors.
+- Ensure smooth scrolling behavior without layout shifts.
+
+### Manual Verification
+- Test the application using a mobile browser simulator (e.g., Chrome DevTools device mode) to verify the "app-like" feel.
+- Verify that the video feed scrolls smoothly and videos play/pause correctly based on visibility.
+- Ensure the UI looks premium with glassmorphism effects and modern typography.
