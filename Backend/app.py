@@ -1,14 +1,39 @@
-from flask import Flask, request, jsonify, session, redirect, url_for, send_from_directory
 import os
 import sqlite3
+import time
+from flask import Flask, request, jsonify, session, redirect, url_for, send_from_directory
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
-import time
 
-app = Flask(__name__, static_folder='.', static_url_path='')
-app.secret_key = 'super_secret_skilltok_key_for_demo'
-DATABASE = 'skilltok.db'
+# ─── Paths ───────────────────────────────────────────────────────────────────
+BASE_DIR   = os.path.dirname(os.path.abspath(__file__))   # .../Backend
+ROOT_DIR   = os.path.dirname(BASE_DIR)                    # .../SkillTok2.0
+FRONTEND   = os.path.join(ROOT_DIR, 'Frontend')           # .../Frontend
+UPLOAD_DIR = os.path.join(ROOT_DIR, 'uploads')            # .../uploads
+DATABASE   = os.path.join(BASE_DIR, 'skilltok.db')
 
+# Ensure uploads directory exists on every startup
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+# ─── App ──────────────────────────────────────────────────────────────────────
+app = Flask(__name__, static_folder=FRONTEND, static_url_path='')
+app.secret_key = os.environ.get('SECRET_KEY', 'super_secret_skilltok_key_for_demo')
+
+# Allow large video uploads (200 MB max)
+app.config['MAX_CONTENT_LENGTH'] = 200 * 1024 * 1024
+
+# Fix session cookies for cross-origin / HTTPS deployments
+app.config['SESSION_COOKIE_SAMESITE'] = 'None'
+app.config['SESSION_COOKIE_SECURE'] = True
+
+# ─── Optional CORS (only if flask-cors is installed) ─────────────────────────
+try:
+    from flask_cors import CORS
+    CORS(app, supports_credentials=True)
+except ImportError:
+    pass  # flask-cors not installed locally, fine for single-origin deploys
+
+# ─── Database ─────────────────────────────────────────────────────────────────
 def get_db():
     conn = sqlite3.connect(DATABASE)
     conn.row_factory = sqlite3.Row
@@ -40,9 +65,9 @@ def init_db():
     conn.commit()
     conn.close()
 
-# Initialize DB on startup
 init_db()
 
+# ─── Page routes ──────────────────────────────────────────────────────────────
 @app.route('/')
 def home():
     if 'user' in session:
@@ -77,20 +102,21 @@ def inbox():
     if 'user' not in session: return redirect(url_for('login_page'))
     return app.send_static_file('inbox.html')
 
+# ─── Auth API ─────────────────────────────────────────────────────────────────
 @app.route('/api/login', methods=['POST'])
 def api_login():
     data = request.json
     username = data.get('username')
     password = data.get('password')
-    
+
     conn = get_db()
     user = conn.execute('SELECT * FROM users WHERE username = ?', (username,)).fetchone()
     conn.close()
-    
+
     if user and check_password_hash(user['password'], password):
         session['user'] = username
         return jsonify({"success": True, "user": {"name": user['name'], "handle": user['handle']}})
-    
+
     return jsonify({"success": False, "message": "Invalid username or password"}), 401
 
 @app.route('/api/signup', methods=['POST'])
@@ -99,20 +125,19 @@ def api_signup():
     username = data.get('username')
     password = data.get('password')
     name = data.get('name', 'New User')
-    
+
     if not username or not password:
         return jsonify({"success": False, "message": "Username and password are required"}), 400
-        
+
     hashed_password = generate_password_hash(password)
     handle = f"@{username}"
-    
+
     try:
         conn = get_db()
         conn.execute('INSERT INTO users (username, password, name, handle) VALUES (?, ?, ?, ?)',
                      (username, hashed_password, name, handle))
         conn.commit()
         conn.close()
-        
         session['user'] = username
         return jsonify({"success": True})
     except sqlite3.IntegrityError:
@@ -123,47 +148,51 @@ def api_logout():
     session.pop('user', None)
     return jsonify({"success": True})
 
+# ─── Upload API ───────────────────────────────────────────────────────────────
 @app.route('/api/upload', methods=['POST'])
 def api_upload():
-    if 'user' not in session: return jsonify({"success": False, "message": "Not logged in"}), 401
-    
+    if 'user' not in session:
+        return jsonify({"success": False, "message": "Not logged in"}), 401
+
     if 'video' not in request.files:
         return jsonify({"success": False, "message": "No video file provided"}), 400
-        
+
     file = request.files['video']
     title = request.form.get('title', 'Untitled')
     category = request.form.get('category', 'Uncategorized')
-    
+
     if file.filename == '':
         return jsonify({"success": False, "message": "Empty filename"}), 400
-        
+
     filename = secure_filename(str(int(time.time())) + "_" + file.filename)
-    filepath = os.path.join('uploads', filename)
-    file.save(filepath)
-    
+    filepath = os.path.join(UPLOAD_DIR, filename)   # absolute path — no crash
+
+    try:
+        file.save(filepath)
+    except Exception as e:
+        return jsonify({"success": False, "message": f"Could not save file: {str(e)}"}), 500
+
     conn = get_db()
     user = conn.execute('SELECT handle FROM users WHERE username = ?', (session['user'],)).fetchone()
     handle = user['handle'] if user else '@unknown'
-    
+
     conn.execute('INSERT INTO videos (user_handle, title, category, filename) VALUES (?, ?, ?, ?)',
                  (handle, title, category, filename))
     conn.commit()
     conn.close()
-    
+
     return jsonify({"success": True})
 
+# ─── Feed / User APIs ─────────────────────────────────────────────────────────
 @app.route('/api/feed', methods=['GET'])
 def api_feed():
     conn = get_db()
-    # Fetch latest videos
     videos = conn.execute('SELECT * FROM videos ORDER BY timestamp DESC LIMIT 20').fetchall()
-    
-    # Also fetch the user's name for the handle
+
     feed = []
     for v in videos:
         author = conn.execute('SELECT name FROM users WHERE handle = ?', (v['user_handle'],)).fetchone()
         author_name = author['name'] if author else 'User'
-        
         feed.append({
             "id": v['id'],
             "handle": v['user_handle'],
@@ -175,82 +204,69 @@ def api_feed():
             "views": v['views']
         })
     conn.close()
-    
     return jsonify({"success": True, "videos": feed})
 
 @app.route('/api/my_videos', methods=['GET'])
 def api_my_videos():
-    if 'user' not in session: return jsonify({"success": False, "message": "Not logged in"}), 401
-    
+    if 'user' not in session:
+        return jsonify({"success": False, "message": "Not logged in"}), 401
+
     conn = get_db()
     user = conn.execute('SELECT handle FROM users WHERE username = ?', (session['user'],)).fetchone()
     if not user:
         conn.close()
         return jsonify({"success": False, "videos": []})
-        
-    videos = conn.execute('SELECT * FROM videos WHERE user_handle = ? ORDER BY timestamp DESC', (user['handle'],)).fetchall()
-    
-    my_videos = []
-    for v in videos:
-        my_videos.append({
-            "id": v['id'],
-            "title": v['title'],
-            "url": f"/uploads/{v['filename']}",
-            "views": v['views']
-        })
+
+    videos = conn.execute(
+        'SELECT * FROM videos WHERE user_handle = ? ORDER BY timestamp DESC', (user['handle'],)
+    ).fetchall()
+
+    my_videos = [{"id": v['id'], "title": v['title'],
+                  "url": f"/uploads/{v['filename']}", "views": v['views']} for v in videos]
     conn.close()
-    
     return jsonify({"success": True, "videos": my_videos})
 
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
-    return send_from_directory('uploads', filename)
+    return send_from_directory(UPLOAD_DIR, filename)   # absolute path
 
 @app.route('/api/me', methods=['GET'])
 def api_me():
     if 'user' in session:
         conn = get_db()
         user = conn.execute('SELECT name, handle FROM users WHERE username = ?', (session['user'],)).fetchone()
-        
+
         if user:
-            # Calculate Gamification Stats
-            stats = conn.execute('SELECT COUNT(*) as v_count, SUM(views) as v_views, SUM(likes) as v_likes FROM videos WHERE user_handle = ?', (user['handle'],)).fetchone()
-            
+            stats = conn.execute(
+                'SELECT COUNT(*) as v_count, SUM(views) as v_views, SUM(likes) as v_likes '
+                'FROM videos WHERE user_handle = ?', (user['handle'],)
+            ).fetchone()
+
             v_count = stats['v_count'] or 0
             v_views = stats['v_views'] or 0
             v_likes = stats['v_likes'] or 0
-            
-            # Determine badges based on activity
+
             badges = []
-            if v_count >= 1:
-                badges.append({"icon": "fa-solid fa-camera", "name": "First Upload"})
-            if v_count >= 5:
-                badges.append({"icon": "fa-solid fa-medal", "name": "Consistent Creator"})
-            if v_likes >= 10:
-                badges.append({"icon": "fa-solid fa-heart", "name": "Loved Content"})
-            if v_views >= 50:
-                badges.append({"icon": "fa-solid fa-fire", "name": "Going Viral"})
-                
-            # If no badges, give a newcomer badge
-            if not badges:
-                badges.append({"icon": "fa-solid fa-seedling", "name": "New Learner"})
+            if v_count >= 1: badges.append({"icon": "fa-solid fa-camera",  "name": "First Upload"})
+            if v_count >= 5: badges.append({"icon": "fa-solid fa-medal",   "name": "Consistent Creator"})
+            if v_likes >= 10: badges.append({"icon": "fa-solid fa-heart",  "name": "Loved Content"})
+            if v_views >= 50: badges.append({"icon": "fa-solid fa-fire",   "name": "Going Viral"})
+            if not badges:   badges.append({"icon": "fa-solid fa-seedling","name": "New Learner"})
 
             conn.close()
-            
             return jsonify({
-                "success": True, 
+                "success": True,
                 "user": {
-                    "name": user['name'], 
+                    "name": user['name'],
                     "handle": user['handle'],
                     "stats": {"videos": v_count, "views": v_views, "likes": v_likes},
                     "badges": badges
                 }
             })
-            
+
     return jsonify({"success": False, "message": "Not logged in"}), 401
 
+# ─── Entry point ──────────────────────────────────────────────────────────────
 if __name__ == '__main__':
-    # Use environment port if available (for deployment platforms like Render/Heroku)
     port = int(os.environ.get("PORT", 5000))
-    # Disable debug mode for production safety
     app.run(host='0.0.0.0', port=port, debug=False)
