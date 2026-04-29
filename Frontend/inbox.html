@@ -7,6 +7,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="config.js"></script>
     <style>
         .page-header {
             display: flex;
@@ -163,71 +164,69 @@
         </div>
 
         <main class="content-area" style="padding-top: 0;">
-            <div class="message-list">
-                
-                <!-- Message 1 -->
-                <div class="message-item">
-                    <div class="msg-avatar">
-                        <img src="https://ui-avatars.com/api/?name=Sarah+Smith&background=FF2E93&color=fff" alt="User">
-                        <div class="online-dot"></div>
-                    </div>
-                    <div class="msg-content">
-                        <div class="msg-header">
-                            <span class="msg-name">Sarah Smith</span>
-                            <span class="msg-time">Just now</span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <span class="msg-preview unread">Loved your last video on React!</span>
-                            <span class="unread-badge">1</span>
-                        </div>
-                    </div>
+            <div class="message-list" id="messageList">
+                <div style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                    <i class="fa-solid fa-spinner fa-spin" style="font-size: 2rem; margin-bottom: 10px;"></i>
+                    <div>Loading messages...</div>
                 </div>
-
-                <!-- Message 2 -->
-                <div class="message-item">
-                    <div class="msg-avatar">
-                        <img src="https://ui-avatars.com/api/?name=David+Chen&background=00F2FE&color=fff" alt="User">
-                    </div>
-                    <div class="msg-content">
-                        <div class="msg-header">
-                            <span class="msg-name">David Chen</span>
-                            <span class="msg-time">2h ago</span>
-                        </div>
-                        <div class="msg-preview">Do you offer 1-on-1 mentorship?</div>
-                    </div>
-                </div>
-
-                <!-- Message 3 -->
-                <div class="message-item">
-                    <div class="msg-avatar">
-                        <img src="https://ui-avatars.com/api/?name=Tech+Academy&background=4FACFE&color=fff" alt="User">
-                        <div class="online-dot"></div>
-                    </div>
-                    <div class="msg-content">
-                        <div class="msg-header">
-                            <span class="msg-name">Tech Academy <i class="fa-solid fa-circle-check verify-badge" style="font-size: 0.8rem;"></i></span>
-                            <span class="msg-time">Yesterday</span>
-                        </div>
-                        <div class="msg-preview">We would love to collaborate.</div>
-                    </div>
-                </div>
-
-                <!-- Message 4 -->
-                <div class="message-item">
-                    <div class="msg-avatar">
-                        <img src="https://ui-avatars.com/api/?name=Emma+UX&background=7B2CBF&color=fff" alt="User">
-                    </div>
-                    <div class="msg-content">
-                        <div class="msg-header">
-                            <span class="msg-name">Emma UX</span>
-                            <span class="msg-time">Mon</span>
-                        </div>
-                        <div class="msg-preview">Sent a video.</div>
-                    </div>
-                </div>
-
             </div>
         </main>
+
+        <script>
+            async function loadMessages() {
+                const list = document.getElementById('messageList');
+                try {
+                    const res = await fetch(window.CONFIG.API_URL + '/api/messages', {
+                        credentials: 'include'
+                    });
+                    const data = await res.json();
+                    
+                    if (data.success && data.messages.length > 0) {
+                        list.innerHTML = '';
+                        data.messages.forEach(msg => {
+                            const isMe = msg.sender_handle === localStorage.getItem('userHandle');
+                            list.innerHTML += `
+                                <div class="message-item" onclick="openChat('${msg.other_name}', '${msg.sender_handle === msg.other_name ? msg.sender_handle : msg.receiver_handle}')">
+                                    <div class="msg-avatar">
+                                        <img src="https://ui-avatars.com/api/?name=${encodeURIComponent(msg.other_name)}&background=random&color=fff" alt="User">
+                                    </div>
+                                    <div class="msg-content">
+                                        <div class="msg-header">
+                                            <span class="msg-name">${msg.other_name}</span>
+                                            <span class="msg-time">${new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                                        </div>
+                                        <div class="msg-preview">${isMe ? 'You: ' : ''}${msg.content}</div>
+                                    </div>
+                                </div>
+                            `;
+                        });
+                    } else {
+                        list.innerHTML = `
+                            <div style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                                <i class="fa-solid fa-comments" style="font-size: 2.5rem; margin-bottom: 10px; opacity: 0.5;"></i>
+                                <div>No messages yet. Start a conversation!</div>
+                            </div>
+                        `;
+                    }
+                } catch (err) {
+                    list.innerHTML = 'Error loading messages';
+                }
+            }
+
+            function openChat(name, handle) {
+                const msg = prompt(`Send a message to ${name} (${handle}):`);
+                if (msg) {
+                    fetch(window.CONFIG.API_URL + '/api/messages/send', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include',
+                        body: JSON.stringify({ receiver_handle: handle, content: msg })
+                    }).then(() => loadMessages());
+                }
+            }
+
+            document.addEventListener('DOMContentLoaded', loadMessages);
+        </script>
 
         <!-- Bottom Navigation Bar -->
         <nav class="bottom-nav">

@@ -7,6 +7,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="config.js"></script>
     <style>
         .upload-area {
             border: 2px dashed rgba(255, 255, 255, 0.2);
@@ -155,8 +156,9 @@
                 statusDiv.innerText = "Uploading... Please wait.";
                 
                 try {
-                    const res = await fetch('/api/upload', {
+                    const res = await fetch(window.CONFIG.API_URL + '/api/upload', {
                         method: 'POST',
+                        credentials: 'include',
                         body: formData
                     });
                     const data = await res.json();

@@ -12,6 +12,7 @@
     <link rel="stylesheet" href="style.css">
     <!-- FontAwesome for Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="config.js"></script>
 </head>
 <body>
     <div class="app-container">
@@ -44,7 +45,9 @@
             async function loadDynamicFeed() {
                 const feedContainer = document.getElementById('videoFeed');
                 try {
-                    const res = await fetch('/api/feed');
+                    const res = await fetch(window.CONFIG.API_URL + '/api/feed', {
+                        credentials: 'include'
+                    });
                     const data = await res.json();
                     
                     if (data.success && data.videos.length > 0) {

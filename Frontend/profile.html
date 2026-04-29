@@ -7,6 +7,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="config.js"></script>
     <style>
         .profile-header {
             display: flex;
@@ -163,7 +164,10 @@
 
         <script>
             document.getElementById('logoutBtn').addEventListener('click', async () => {
-                await fetch('/api/logout', { method: 'POST' });
+                await fetch(window.CONFIG.API_URL + '/api/logout', { 
+                    method: 'POST',
+                    credentials: 'include'
+                });
                 window.location.href = '/login';
             });
         </script>
@@ -195,7 +199,7 @@
 
             <script>
                 // Fetch dynamic user info
-                fetch('/api/me').then(res => res.json()).then(data => {
+                fetch(window.CONFIG.API_URL + '/api/me', { credentials: 'include' }).then(res => res.json()).then(data => {
                     if (data.success) {
                         document.getElementById('profileName').innerText = data.user.name;
                         document.getElementById('profileHandle').innerText = data.user.handle;
@@ -205,6 +209,7 @@
                         document.getElementById('statVideos').innerText = data.user.stats.videos;
                         document.getElementById('statViews').innerText = data.user.stats.views;
                         document.getElementById('statLikes').innerText = data.user.stats.likes;
+                        document.getElementById('streakCount').innerText = `${data.user.streak} Days`;
                         
                         // Render dynamic badges
                         const badgeContainer = document.getElementById('dynamicBadges');
@@ -216,7 +221,7 @@
                 });
                 
                 // Fetch user's uploaded videos
-                fetch('/api/my_videos').then(res => res.json()).then(data => {
+                fetch(window.CONFIG.API_URL + '/api/my_videos', { credentials: 'include' }).then(res => res.json()).then(data => {
                     const grid = document.getElementById('myVideoGrid');
                     if (data.success && data.videos.length > 0) {
                         grid.innerHTML = '';
@@ -243,7 +248,7 @@
                 <div class="streak-card">
                     <i class="fa-solid fa-fire"></i>
                     <div>
-                        <div style="font-weight: 700; font-size: 1.1rem;">7 Days</div>
+                        <div style="font-weight: 700; font-size: 1.1rem;" id="streakCount">0 Days</div>
                         <div style="font-size: 0.8rem; font-weight: 500;">Learning Streak!</div>
                     </div>
                 </div>

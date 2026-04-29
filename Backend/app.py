@@ -26,12 +26,12 @@ app.config['MAX_CONTENT_LENGTH'] = 200 * 1024 * 1024
 app.config['SESSION_COOKIE_SAMESITE'] = 'None'
 app.config['SESSION_COOKIE_SECURE'] = True
 
-# ─── Optional CORS (only if flask-cors is installed) ─────────────────────────
+# ─── CORS Configuration ──────────────────────────────────────────────────────
 try:
     from flask_cors import CORS
-    CORS(app, supports_credentials=True)
+    CORS(app, supports_credentials=True, origins=["http://localhost:3000", "http://127.0.0.1:5000", "https://*.vercel.app"])
 except ImportError:
-    pass  # flask-cors not installed locally, fine for single-origin deploys
+    pass
 
 # ─── Database ─────────────────────────────────────────────────────────────────
 def get_db():
@@ -47,7 +47,9 @@ def init_db():
             username TEXT UNIQUE NOT NULL,
             password TEXT NOT NULL,
             name TEXT NOT NULL,
-            handle TEXT NOT NULL
+            handle TEXT NOT NULL,
+            streak_count INTEGER DEFAULT 0,
+            last_login TEXT
         )
     ''')
     conn.execute('''
@@ -59,6 +61,15 @@ def init_db():
             filename TEXT NOT NULL,
             likes INTEGER DEFAULT 0,
             views INTEGER DEFAULT 0,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sender_handle TEXT NOT NULL,
+            receiver_handle TEXT NOT NULL,
+            content TEXT NOT NULL,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
@@ -115,7 +126,29 @@ def api_login():
 
     if user and check_password_hash(user['password'], password):
         session['user'] = username
-        return jsonify({"success": True, "user": {"name": user['name'], "handle": user['handle']}})
+        
+        # Streak Logic
+        from datetime import datetime, timedelta
+        today = datetime.now().date()
+        last_login_str = user['last_login']
+        streak = user['streak_count'] or 0
+        
+        if last_login_str:
+            last_login_date = datetime.strptime(last_login_str, '%Y-%m-%d').date()
+            if last_login_date == today - timedelta(days=1):
+                streak += 1
+            elif last_login_date < today - timedelta(days=1):
+                streak = 1
+        else:
+            streak = 1
+            
+        conn = get_db()
+        conn.execute('UPDATE users SET last_login = ?, streak_count = ? WHERE username = ?', 
+                     (today.strftime('%Y-%m-%d'), streak, username))
+        conn.commit()
+        conn.close()
+
+        return jsonify({"success": True, "user": {"name": user['name'], "handle": user['handle'], "streak": streak}})
 
     return jsonify({"success": False, "message": "Invalid username or password"}), 401
 
@@ -187,23 +220,29 @@ def api_upload():
 @app.route('/api/feed', methods=['GET'])
 def api_feed():
     conn = get_db()
-    videos = conn.execute('SELECT * FROM videos ORDER BY timestamp DESC LIMIT 20').fetchall()
+    # Optimized JOIN to get author name in one query (No more lag!)
+    query = '''
+        SELECT v.*, u.name as author_name 
+        FROM videos v 
+        JOIN users u ON v.user_handle = u.handle 
+        ORDER BY v.timestamp DESC 
+        LIMIT 20
+    '''
+    videos = conn.execute(query).fetchall()
+    conn.close()
 
     feed = []
     for v in videos:
-        author = conn.execute('SELECT name FROM users WHERE handle = ?', (v['user_handle'],)).fetchone()
-        author_name = author['name'] if author else 'User'
         feed.append({
             "id": v['id'],
             "handle": v['user_handle'],
-            "author_name": author_name,
+            "author_name": v['author_name'],
             "title": v['title'],
             "category": v['category'],
             "url": f"/uploads/{v['filename']}",
             "likes": v['likes'],
             "views": v['views']
         })
-    conn.close()
     return jsonify({"success": True, "videos": feed})
 
 @app.route('/api/my_videos', methods=['GET'])
@@ -234,7 +273,7 @@ def uploaded_file(filename):
 def api_me():
     if 'user' in session:
         conn = get_db()
-        user = conn.execute('SELECT name, handle FROM users WHERE username = ?', (session['user'],)).fetchone()
+        user = conn.execute('SELECT name, handle, streak_count FROM users WHERE username = ?', (session['user'],)).fetchone()
 
         if user:
             stats = conn.execute(
@@ -259,12 +298,55 @@ def api_me():
                 "user": {
                     "name": user['name'],
                     "handle": user['handle'],
+                    "streak": user['streak_count'] or 0,
                     "stats": {"videos": v_count, "views": v_views, "likes": v_likes},
                     "badges": badges
                 }
             })
 
     return jsonify({"success": False, "message": "Not logged in"}), 401
+
+# ─── Chat APIs ──────────────────────────────────────────────────────────────
+@app.route('/api/messages', methods=['GET'])
+def get_messages():
+    if 'user' not in session: return jsonify({"success": False}), 401
+    
+    conn = get_db()
+    me = conn.execute('SELECT handle FROM users WHERE username = ?', (session['user'],)).fetchone()
+    if not me: return jsonify({"success": False}), 404
+    
+    # Simple logic: get all messages where I am sender or receiver
+    messages = conn.execute('''
+        SELECT m.*, u.name as other_name 
+        FROM messages m
+        JOIN users u ON (CASE WHEN m.sender_handle = ? THEN m.receiver_handle ELSE m.sender_handle END) = u.handle
+        WHERE m.sender_handle = ? OR m.receiver_handle = ?
+        ORDER BY m.timestamp DESC
+    ''', (me['handle'], me['handle'], me['handle'])).fetchall()
+    conn.close()
+    
+    return jsonify({
+        "success": True, 
+        "messages": [dict(m) for m in messages]
+    })
+
+@app.route('/api/messages/send', methods=['POST'])
+def send_message():
+    if 'user' not in session: return jsonify({"success": False}), 401
+    data = request.json
+    receiver = data.get('receiver_handle')
+    content = data.get('content')
+    
+    if not receiver or not content: return jsonify({"success": False}), 400
+    
+    conn = get_db()
+    me = conn.execute('SELECT handle FROM users WHERE username = ?', (session['user'],)).fetchone()
+    
+    conn.execute('INSERT INTO messages (sender_handle, receiver_handle, content) VALUES (?, ?, ?)',
+                 (me['handle'], receiver, content))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True})
 
 # ─── Entry point ──────────────────────────────────────────────────────────────
 if __name__ == '__main__':

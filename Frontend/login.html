@@ -7,6 +7,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="config.js"></script>
     <style>
         .login-container {
             display: flex;
@@ -136,14 +137,17 @@
             const errorMsg = document.getElementById('errorMsg');
             
             try {
-                const res = await fetch('/api/login', {
+                const res = await fetch(window.CONFIG.API_URL + '/api/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
                     body: JSON.stringify({ username, password })
                 });
                 const data = await res.json();
                 
                 if (data.success) {
+                    localStorage.setItem('userName', data.user.name);
+                    localStorage.setItem('userHandle', data.user.handle);
                     window.location.href = '/';
                 } else {
                     errorMsg.style.display = 'block';
