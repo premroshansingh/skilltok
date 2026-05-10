@@ -1,1 +1,1 @@
-web: gunicorn --chdir Backend --timeout 120 --workers 2 app:app
+web: npm install --prefix Backend && npm install --prefix Frontend && npm run build --prefix Frontend && npm start

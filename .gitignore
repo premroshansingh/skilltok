@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+.env.*
+
+Backend/skilltok.db
+Backend/*.sqlite3
+uploads/
