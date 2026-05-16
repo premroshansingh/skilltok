@@ -441,7 +441,19 @@ function Home() {
               </div>
             </aside>
             <div className="video-info">
-              <h2 className="creator-name">{video.handle} <span>{video.category}</span></h2>
+              <h2 className="creator-name" style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
+                {video.handle} 
+                <span className="category-tag" style={{background: 'rgba(255,255,255,0.1)', padding: '2px 6px', borderRadius: '4px', fontSize: '0.6rem'}}>{video.category}</span>
+                {video.handle !== localStorage.getItem("userHandle") && (
+                  <button 
+                    className="follow-btn-mini" 
+                    onClick={(e) => { e.stopPropagation(); follow(video.handle); }}
+                    style={{ background: followed[video.handle] ? 'rgba(255,255,255,0.1)' : '#4facfe', border: followed[video.handle] ? '1px solid rgba(255,255,255,0.2)' : 'none', color: 'white', padding: '3px 10px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s' }}
+                  >
+                    {followed[video.handle] ? 'Following' : 'Follow'}
+                  </button>
+                )}
+              </h2>
               <p className="video-desc">
                 {video.title.split(/(\s+)/).map((word, i) => word.startsWith('#') ? <span key={i} style={{color: '#4facfe', cursor: 'pointer', fontWeight: 'bold'}} onClick={() => go('/discover?q=' + encodeURIComponent(word.slice(1)))}>{word}</span> : word)}
               </p>
@@ -512,19 +524,26 @@ function Discover() {
       {query.length > 0 && (
         <div className="glass-card" style={{marginBottom: '20px'}}>
           <h3 style={{marginBottom: '10px', fontSize: '1rem'}}>Search Results</h3>
-          {results.length ? results.map(u => (
-            <div key={u.handle} style={{display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.1)'}}>
-              <img src={`https://ui-avatars.com/api/?name=${encodeURIComponent(u.name)}&background=random&color=fff&size=40`} style={{borderRadius: '50%'}} alt="" />
-              <div style={{flex: 1}}>
-                <div style={{fontWeight: 'bold', fontSize: '0.9rem'}}>{u.name}</div>
-                <div style={{fontSize: '0.8rem', color: 'rgba(255,255,255,0.7)'}}>{u.handle}</div>
+          {results.length ? results.map((user) => (
+            <div className="search-result-item" key={user.handle} style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.05)'}}>
+              <div style={{display: 'flex', gap: '12px', alignItems: 'center'}}>
+                <img src={`https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=random&color=fff`} style={{width: 40, height: 40, borderRadius: '50%'}} alt="" />
+                <div>
+                  <div style={{fontWeight: 'bold', fontSize: '0.9rem'}}>{user.name}</div>
+                  <div style={{fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)'}}>{user.handle}</div>
+                </div>
               </div>
-              <button className="btn-primary compact" style={{padding: '5px 15px'}} onClick={() => {
-                 api("/api/follow", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target_handle: u.handle }) });
-                 alert(`Followed ${u.name}!`);
-              }}>Follow</button>
+              {user.handle !== localStorage.getItem("userHandle") && (
+                <button 
+                  className="btn-primary compact" 
+                  onClick={() => follow(user.handle)}
+                  style={{background: followed[user.handle] ? 'rgba(255,255,255,0.1)' : '#4facfe', color: 'white', minWidth: '80px', border: followed[user.handle] ? '1px solid rgba(255,255,255,0.2)' : 'none'}}
+                >
+                  {followed[user.handle] ? 'Following' : 'Follow'}
+                </button>
+              )}
             </div>
-          )) : <div style={{fontSize: '0.9rem', color: 'rgba(255,255,255,0.7)'}}>No users found matching "{query}"</div>}
+          )) : <div style={{fontSize: '0.9rem', color: 'rgba(255,255,255,0.7)', padding: '10px 0'}}>No users found matching "{query}"</div>}
         </div>
       )}
 
