@@ -90,6 +90,15 @@ export async function initDb() {
     )
   `);
 
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS feedback (
+      id SERIAL PRIMARY KEY,
+      user_handle TEXT NOT NULL,
+      content TEXT NOT NULL,
+      timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   try {
     await pool.query(`ALTER TABLE videos ADD COLUMN IF NOT EXISTS thumbnail_filename TEXT DEFAULT ''`);
   } catch (err) {

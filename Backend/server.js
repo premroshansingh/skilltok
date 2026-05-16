@@ -453,6 +453,24 @@ app.post("/api/messages/send", requireLogin, async (req, res, next) => {
   }
 });
 
+app.post("/api/feedback", requireLogin, async (req, res, next) => {
+  try {
+    const { content } = req.body;
+    if (!content) return res.status(400).json({ success: false, message: "Content required" });
+
+    const user = await pool.query("SELECT handle FROM users WHERE username = $1", [req.session.user]);
+    const handle = user.rows[0]?.handle;
+
+    await pool.query(
+      "INSERT INTO feedback (user_handle, content) VALUES ($1, $2)",
+      [handle, content]
+    );
+    return res.json({ success: true });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 app.post("/api/follow", requireLogin, async (req, res, next) => {
   try {
     const { target_handle } = req.body;

@@ -629,6 +629,8 @@ function Profile() {
   const [activeTab, setActiveTab] = useState(0);
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState({ name: "", bio: "", avatar_url: "" });
+  const [feedbackModal, setFeedbackModal] = useState(false);
+  const [feedbackText, setFeedbackText] = useState("");
 
   useEffect(() => {
     api("/api/me").then((res) => res.json()).then((data) => {
@@ -676,23 +678,35 @@ function Profile() {
     }
   }
 
-  const current = user || { name: "Loading...", handle: "@loading", bio: "", avatar_url: "", streak: 0, stats: { videos: 0, views: 0, likes: 0 }, badges: [] };
+  async function submitFeedback() {
+    if (!feedbackText.trim()) return;
+    await api("/api/feedback", { 
+      method: "POST", 
+      headers: { "Content-Type": "application/json" }, 
+      body: JSON.stringify({ content: feedbackText }) 
+    });
+    setFeedbackModal(false);
+    setFeedbackText("");
+    alert("Thank you for your feedback!");
+  }
+
+  const current = user || { name: "Loading...", handle: "@loading", bio: "", avatar_url: "", streak: 0, stats: { videos: 0, views: 0, likes: 0, followers: 0, following: 0 }, badges: [] };
   const avatarImage = current.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(current.name)}&background=4FACFE&color=fff`;
 
-  const displayVideos = activeTab === 2 ? savedVideos : videos;
+  const displayVideos = activeTab === 0 ? videos : (activeTab === 2 ? savedVideos : []);
 
   return (
-    <Shell title="Profile" active="profile" right={<button className="icon-btn danger" onClick={logout}><i className="fa-solid fa-right-from-bracket"></i></button>}>
+    <Shell title="Profile" active="profile">
       {isEditing ? (
-        <form onSubmit={saveProfile} className="glass-card">
-          <h3 style={{marginBottom: 15}}>Edit Profile</h3>
-          <label className="form-group"><span>Name</span><input className="form-control" value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} /></label>
-          <label className="form-group"><span>Bio</span><textarea className="form-control" value={editForm.bio} onChange={e => setEditForm({...editForm, bio: e.target.value})} style={{minHeight: '60px'}}></textarea></label>
-          <label className="form-group"><span>Avatar URL (Optional)</span><input className="form-control" placeholder="https://..." value={editForm.avatar_url} onChange={e => setEditForm({...editForm, avatar_url: e.target.value})} /></label>
-          <div style={{display: 'flex', gap: 10, marginTop: 15}}>
-             <button type="button" className="ghost-btn" style={{flex: 1, margin: 0, border: '1px solid rgba(255,255,255,0.2)', borderRadius: '12px'}} onClick={() => setIsEditing(false)}>Cancel</button>
-             <button type="submit" className="btn-primary compact" style={{flex: 1, padding: '10px'}}>Save</button>
-          </div>
+        <form onSubmit={saveProfile} className="glass-card" style={{margin: '20px', padding: '20px'}}>
+           <h3>Edit Profile</h3>
+           <label className="form-group"><span>Full Name</span><input className="form-control" value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} /></label>
+           <label className="form-group"><span>Bio</span><textarea className="form-control" value={editForm.bio} onChange={e => setEditForm({...editForm, bio: e.target.value})} /></label>
+           <label className="form-group"><span>Avatar URL</span><input className="form-control" value={editForm.avatar_url} onChange={e => setEditForm({...editForm, avatar_url: e.target.value})} /></label>
+           <div style={{display: 'flex', gap: '10px', marginTop: '20px'}}>
+              <button type="button" className="btn-edit" onClick={() => setIsEditing(false)} style={{flex: 1, margin: 0}}>Cancel</button>
+              <button type="submit" className="btn-primary compact" style={{flex: 1, padding: '10px'}}>Save</button>
+           </div>
         </form>
       ) : (
         <section className="profile-header">
@@ -700,13 +714,36 @@ function Profile() {
           <h2 className="profile-name">{current.name}</h2>
           <p className="profile-handle">{current.handle}</p>
           {current.bio && <p style={{fontSize: '0.9rem', marginBottom: '15px', color: 'var(--text-secondary)', padding: '0 20px'}}>{current.bio}</p>}
-          <button className="btn-primary compact" style={{marginBottom: '20px', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', color: 'white'}} onClick={() => setIsEditing(true)}>Edit Profile</button>
+          <div style={{display: 'flex', gap: '10px', justifyContent: 'center', marginBottom: '20px'}}>
+            <button className="btn-primary compact" style={{background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', color: 'white', margin: 0}} onClick={() => setIsEditing(true)}>Edit Profile</button>
+            <button className="btn-primary compact" style={{background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', margin: 0}} onClick={() => setFeedbackModal(true)}><i className="fa-solid fa-comment-dots"></i> Feedback</button>
+            <button className="btn-logout" onClick={logout} style={{margin: 0, padding: '5px 15px'}}><i className="fa-solid fa-right-from-bracket"></i></button>
+          </div>
           <div className="stats-row">{["videos", "followers", "following", "likes"].map((key) => <div className="stat-box" key={key}><div className="stat-num">{current.stats[key]}</div><div className="stat-label">{key[0].toUpperCase() + key.slice(1)}</div></div>)}</div>
         </section>
       )}
       <section className="gamification-section"><div className="streak-card"><i className="fa-solid fa-fire"></i><div><strong>{current.streak} Days</strong><span>Learning Streak!</span></div></div><div className="badges-card"><span>Earned Badges</span><div className="badge-icons">{current.badges.map((badge) => <i key={badge.name} className={badge.icon} title={badge.name}></i>)}</div></div></section>
       <div className="tabs">{["fa-solid fa-border-all", "fa-solid fa-lock", "fa-solid fa-bookmark", "fa-solid fa-heart"].map((icon, index) => <div className={`tab ${index === activeTab ? "active" : ""}`} key={icon} onClick={() => setActiveTab(index)}><i className={icon}></i></div>)}</div>
       <div className="video-grid">{displayVideos.length ? displayVideos.map((video) => <div className="grid-item" key={video.id}>{video.thumbnail_url ? <img src={video.thumbnail_url} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt=""/> : <video src={video.url} muted loop preload="metadata" onLoadedData={(e) => { e.target.currentTime = 1; }}></video>}<div className="views"><i className="fa-solid fa-play"></i> {video.views}</div></div>) : <Empty icon={activeTab === 2 ? "fa-solid fa-bookmark" : "fa-solid fa-camera"} text={activeTab === 2 ? "No saved videos yet." : "No videos uploaded yet."} />}</div>
+      {feedbackModal && (
+        <div className="modal-overlay" style={{zIndex: 2000}}>
+          <div className="glass-card modal-content" style={{maxWidth: '400px', width: '90%'}}>
+            <h3>Give Feedback</h3>
+            <p style={{fontSize: '0.9rem', marginBottom: '15px', color: 'rgba(255,255,255,0.7)'}}>Help us improve SkillTok! Your feedback goes directly to our team.</p>
+            <textarea 
+              className="form-control" 
+              placeholder="What's on your mind?" 
+              value={feedbackText} 
+              onChange={(e) => setFeedbackText(e.target.value)}
+              style={{minHeight: '120px', marginBottom: '20px'}}
+            ></textarea>
+            <div style={{display: 'flex', gap: '10px'}}>
+              <button className="btn-primary" onClick={submitFeedback}>Submit</button>
+              <button className="btn-edit" onClick={() => setFeedbackModal(false)} style={{margin: 0}}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
     </Shell>
   );
 }
