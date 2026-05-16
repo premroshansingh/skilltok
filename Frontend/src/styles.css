@@ -38,14 +38,30 @@
   box-sizing: border-box;
   margin: 0;
   padding: 0;
-  font-family: "Inter", sans-serif;
+  font-family: "Outfit", "Inter", sans-serif;
   -webkit-tap-highlight-color: transparent;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+:root {
+  font-size: clamp(14px, 1.2vw, 18px);
 }
 
 body {
-  background: radial-gradient(circle at 50% -20%, #1e1b4b, #000000 80%);
+  background: var(--bg-darker);
+  background-attachment: fixed;
   color: var(--text-primary);
   overflow: hidden;
+  height: 100dvh;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(circle at 50% -20%, rgba(30, 27, 75, 0.5), transparent 80%);
+  pointer-events: none;
+  z-index: -1;
 }
 
 @keyframes fadeUp {
@@ -79,18 +95,32 @@ button {
 
 .app-container {
   position: relative;
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
   height: 100dvh;
   display: flex;
   flex-direction: column;
-  max-width: 500px;
+  max-width: 480px;
   margin: 0 auto;
-  background: transparent;
-  backdrop-filter: blur(20px);
-  box-shadow: 0 0 60px rgba(0, 0, 0, 0.8), 0 0 20px var(--glow-primary);
+  background: var(--bg-dark);
+  box-shadow: 0 0 100px rgba(0, 0, 0, 0.9);
   border-left: 1px solid var(--glass-border);
   border-right: 1px solid var(--glass-border);
+}
+
+@media (min-width: 1024px) {
+  body {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: #050505;
+  }
+  .app-container {
+    height: 900px;
+    max-height: 90vh;
+    border-radius: 30px;
+    overflow: hidden;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 30px var(--glow-primary);
+  }
 }
 
 .logo {
@@ -250,8 +280,12 @@ select.form-control option {
 }
 
 .btn-primary:active,
-.btn-submit:active {
-  transform: translateY(1px);
+.btn-submit:active,
+.icon-btn:active,
+.action-btn:active,
+.nav-item:active {
+  transform: scale(0.92);
+  transition: transform 0.1s ease;
 }
 
 .btn-primary.compact {
@@ -357,9 +391,11 @@ select.form-control option {
 }
 
 .category-chip.active {
-  color: var(--bg-darker);
+  color: #000;
   font-weight: 700;
-  background: white;
+  background: var(--primary-color);
+  box-shadow: 0 0 15px var(--glow-primary);
+  border-color: transparent;
 }
 
 .video-feed {
@@ -379,6 +415,13 @@ select.form-control option {
   justify-content: center;
   background: #000;
   scroll-snap-align: start;
+  overflow: hidden;
+}
+
+@media (min-width: 1024px) {
+  .video-container {
+    height: calc(900px - var(--bottom-nav-height));
+  }
 }
 
 .video-container video {
@@ -923,13 +966,20 @@ select.form-control option {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 2px;
+  padding: 2px;
 }
 
 .grid-item {
+  aspect-ratio: 9 / 16;
+  background: #111;
   position: relative;
   overflow: hidden;
-  aspect-ratio: 9 / 16;
-  background: #000;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.grid-item:active {
+  opacity: 0.7;
 }
 
 .grid-item video {
