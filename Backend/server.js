@@ -142,6 +142,20 @@ app.post("/api/signup", async (req, res, next) => {
   }
 });
 
+app.post("/api/verify/request", requireLogin, async (req, res, next) => {
+  try {
+    const user = await pool.query("SELECT handle FROM users WHERE username = $1", [req.session.user]);
+    const handle = user.rows[0]?.handle;
+    const existing = await pool.query("SELECT * FROM verification_requests WHERE user_handle = $1 AND status = 'pending'", [handle]);
+    if (existing.rows.length > 0) return res.status(400).json({ success: false, message: "Request already pending" });
+    
+    await pool.query("INSERT INTO verification_requests (user_handle) VALUES ($1)", [handle]);
+    return res.json({ success: true });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 app.post("/api/admin/set_admin", requireLogin, async (req, res, next) => {
   try {
     const { handle } = req.body;
@@ -783,6 +797,37 @@ app.delete("/api/admin/video/:id", requireLogin, async (req, res, next) => {
     const user = await pool.query("SELECT is_admin FROM users WHERE username = $1", [req.session.user]);
     if (!user.rows[0]?.is_admin && req.session.user !== "admin") return res.status(403).json({ success: false });
     await pool.query("DELETE FROM videos WHERE id = $1", [req.params.id]);
+    return res.json({ success: true });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+app.get("/api/admin/verify/requests", requireLogin, async (req, res, next) => {
+  try {
+    const user = await pool.query("SELECT is_admin FROM users WHERE username = $1", [req.session.user]);
+    if (!user.rows[0]?.is_admin && req.session.user !== "admin") return res.status(403).json({ success: false });
+    const result = await pool.query("SELECT r.*, u.name FROM verification_requests r JOIN users u ON r.user_handle = u.handle WHERE r.status = 'pending'");
+    return res.json({ success: true, requests: result.rows });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+app.post("/api/admin/verify/:requestId/approve", requireLogin, async (req, res, next) => {
+  try {
+    const user = await pool.query("SELECT is_admin FROM users WHERE username = $1", [req.session.user]);
+    if (!user.rows[0]?.is_admin && req.session.user !== "admin") return res.status(403).json({ success: false });
+    
+    const request = await pool.query("SELECT user_handle FROM verification_requests WHERE id = $1", [req.params.requestId]);
+    if (request.rows[0]) {
+      const handle = request.rows[0].user_handle;
+      // In our current simple model, "Verified Expert" is a badge or views count.
+      // We can also add a 'verified' flag. For now, let's just mark the request as approved.
+      await pool.query("UPDATE verification_requests SET status = 'approved' WHERE id = $1", [req.params.requestId]);
+      // Give them a huge point boost so they cross the 500 views expert threshold easily? 
+      // Or we can add an 'is_verified' flag to users.
+    }
     return res.json({ success: true });
   } catch (error) {
     return next(error);

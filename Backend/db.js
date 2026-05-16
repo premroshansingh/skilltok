@@ -141,6 +141,15 @@ export async function initDb() {
     )
   `);
 
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS verification_requests (
+      id SERIAL PRIMARY KEY,
+      user_handle TEXT NOT NULL,
+      status TEXT DEFAULT 'pending',
+      timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   try {
     await pool.query(`ALTER TABLE videos ADD COLUMN IF NOT EXISTS thumbnail_filename TEXT DEFAULT ''`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_videos_handle ON videos(user_handle)`);

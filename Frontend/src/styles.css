@@ -48,25 +48,71 @@
 }
 
 body {
-  background: var(--bg-darker);
-  background-attachment: fixed;
+  background: #020205;
   color: var(--text-primary);
   overflow: hidden;
   height: 100dvh;
+  position: relative;
+}
+
+body::before, body::after {
+  content: "";
+  position: fixed;
+  width: 150%;
+  height: 150%;
+  top: -25%;
+  left: -25%;
+  z-index: -2;
+  filter: blur(80px);
+  opacity: 0.5;
+  pointer-events: none;
 }
 
 body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  background: radial-gradient(circle at 50% -20%, rgba(30, 27, 75, 0.5), transparent 80%);
-  pointer-events: none;
-  z-index: -1;
+  background: radial-gradient(circle at 20% 30%, #1e1b4b 0%, transparent 50%),
+              radial-gradient(circle at 80% 70%, #4facfe 0%, transparent 50%);
+  animation: meshMove 20s infinite alternate ease-in-out;
 }
 
-@keyframes fadeUp {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
+body::after {
+  background: radial-gradient(circle at 70% 20%, #ff0844 0%, transparent 50%),
+              radial-gradient(circle at 30% 80%, #00f2fe 0%, transparent 50%);
+  animation: meshMoveReverse 25s infinite alternate ease-in-out;
+}
+
+.mesh-overlay {
+  position: fixed;
+  inset: 0;
+  background: url("https://grainy-gradients.vercel.app/noise.svg");
+  opacity: 0.05;
+  z-index: -1;
+  pointer-events: none;
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, rgba(255,255,255,0.05) 25%, rgba(255,255,255,0.1) 50%, rgba(255,255,255,0.05) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 8px;
+}
+
+@keyframes meshMove {
+  0% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(10%, 10%) scale(1.2); }
+  66% { transform: translate(-10%, 5%) scale(0.9); }
+  100% { transform: translate(0, 0) scale(1); }
+}
+
+@keyframes meshMoveReverse {
+  0% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(-15%, -10%) scale(0.8); }
+  66% { transform: translate(10%, -15%) scale(1.1); }
+  100% { transform: translate(0, 0) scale(1); }
 }
 
 @keyframes heartPulse {

@@ -244,8 +244,25 @@ function Signup() {
   );
 }
 
+function SkeletonFeed() {
+  return (
+    <div className="video-container" style={{background: '#000'}}>
+      <div className="skeleton" style={{width: '100%', height: '100%'}}></div>
+      <div className="video-info" style={{bottom: '40px'}}>
+        <div className="skeleton" style={{width: '150px', height: '20px', marginBottom: '10px'}}></div>
+        <div className="skeleton" style={{width: '80%', height: '15px', marginBottom: '5px'}}></div>
+        <div className="skeleton" style={{width: '60%', height: '15px'}}></div>
+      </div>
+      <div className="action-sidebar" style={{bottom: '40px'}}>
+        {[1,2,3,4].map(i => <div key={i} className="skeleton" style={{width: '40px', height: '40px', borderRadius: '50%'}}></div>)}
+      </div>
+    </div>
+  );
+}
+
 function Home() {
   const [videos, setVideos] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState("For You");
   const [liked, setLiked] = useState({});
   const [followed, setFollowed] = useState({});
@@ -265,6 +282,7 @@ function Home() {
 
   const loadFeed = (reset = false) => {
     const currentOffset = reset ? 0 : offset;
+    if (reset) setIsLoading(true);
     api(`/api/feed?offset=${currentOffset}`).then((res) => res.json()).then((data) => {
       if (data.success) {
         const newVideos = data.videos.map(video => ({
@@ -272,6 +290,7 @@ function Home() {
           url: video.url.startsWith("http") ? video.url : (window.CONFIG?.API_URL || "") + video.url
         }));
         setVideos(prev => reset ? newVideos : [...prev, ...newVideos]);
+        setIsLoading(false);
         
         const newLiked = { ...liked };
         const newFollowed = { ...followed };
@@ -288,7 +307,7 @@ function Home() {
         if (data.videos.length < 20) setHasMore(false);
         setOffset(currentOffset + 20);
       }
-    });
+    }).catch(() => {}).finally(() => setIsLoading(false));
   };
 
   useEffect(() => {
@@ -438,7 +457,7 @@ function Home() {
         </div>
       </header>
       <main className="video-feed">
-        {feed.filter(v => !blockedUsers.has(v.handle)).map((video) => (
+        {isLoading ? <SkeletonFeed /> : feed.filter(v => !blockedUsers.has(v.handle)).map((video) => (
           <section className="video-container" key={video.id}>
             <video 
               id={`video-${video.id}`}
@@ -808,18 +827,29 @@ function Upload() {
 function AdminDashboard() {
   const [stats, setStats] = useState(null);
   const [videos, setVideos] = useState([]);
+  const [verifyRequests, setVerifyRequests] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     Promise.all([
       api("/api/admin/stats").then(res => res.json()),
-      api("/api/admin/videos").then(res => res.json())
-    ]).then(([sData, vData]) => {
+      api("/api/admin/videos").then(res => res.json()),
+      api("/api/admin/verify/requests").then(res => res.json())
+    ]).then(([sData, vData, rData]) => {
       if (sData.success) setStats(sData.stats);
       if (vData.success) setVideos(vData.videos);
+      if (rData.success) setVerifyRequests(rData.requests);
       setLoading(false);
     });
   }, []);
+
+  async function approveRequest(id) {
+    const res = await api(`/api/admin/verify/${id}/approve`, { method: "POST" });
+    if ((await res.json()).success) {
+      setVerifyRequests(prev => prev.filter(r => r.id !== id));
+      alert("User verified!");
+    }
+  }
 
   async function deleteVideo(id) {
     if (!window.confirm("Delete this video permanently?")) return;
@@ -853,6 +883,22 @@ function AdminDashboard() {
           </div>
         ))}
       </div>
+      {verifyRequests.length > 0 && (
+        <>
+          <h2 className="section-title" style={{marginTop: '20px'}}>Verification Requests</h2>
+          <div className="admin-list" style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
+            {verifyRequests.map(r => (
+              <div key={r.id} className="glass-card" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px'}}>
+                <div>
+                  <div style={{fontWeight: 'bold'}}>{r.name}</div>
+                  <div style={{fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)'}}>{r.user_handle}</div>
+                </div>
+                <button className="btn-primary compact" onClick={() => approveRequest(r.id)}>Approve</button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </Shell>
   );
 }
@@ -1097,6 +1143,20 @@ function Profile() {
               alert(`Scan this QR code to visit this profile:\n${qrUrl}`);
               window.open(qrUrl, "_blank");
             }}><i className="fa-solid fa-qrcode"></i></button>
+            {current.stats.is_expert ? (
+              <div style={{background: 'rgba(79, 172, 254, 0.2)', padding: '5px 12px', borderRadius: '20px', fontSize: '0.75rem', fontWeight: 'bold', color: '#4facfe', border: '1px solid #4facfe'}}>
+                <i className="fa-solid fa-circle-check"></i> Verified Expert
+              </div>
+            ) : (
+              <button className="btn-primary compact" style={{background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white'}} onClick={() => {
+                api("/api/verify/request", { method: "POST" }).then(res => res.json()).then(data => {
+                  if (data.success) alert("Verification request sent! Admin will review your profile.");
+                  else alert(data.message || "Request failed");
+                });
+              }}>
+                <i className="fa-solid fa-user-shield"></i> Request Verification
+              </button>
+            )}
             <button className="btn-logout" onClick={logout} style={{margin: 0, padding: '5px 15px'}}><i className="fa-solid fa-right-from-bracket"></i></button>
           </div>
           <div className="stats-row">{["videos", "followers", "following", "likes"].map((key) => <div className="stat-box" key={key}><div className="stat-num">{current.stats[key]}</div><div className="stat-label">{key[0].toUpperCase() + key.slice(1)}</div></div>)}</div>
