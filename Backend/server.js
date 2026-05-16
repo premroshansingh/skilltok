@@ -142,6 +142,14 @@ app.post("/api/signup", async (req, res, next) => {
   }
 });
 
+async function createNotification(userHandle, actorHandle, type, videoId = null) {
+  if (userHandle === actorHandle) return;
+  await pool.query(
+    "INSERT INTO notifications (user_handle, actor_handle, type, video_id) VALUES ($1, $2, $3, $4)",
+    [userHandle, actorHandle, type, videoId]
+  );
+}
+
 app.post("/api/logout", (req, res) => {
   req.session.destroy(() => {
     res.clearCookie("connect.sid");
@@ -201,15 +209,32 @@ app.post("/api/upload", requireLogin, upload.single("video"), async (req, res, n
 app.get("/api/feed", async (_req, res, next) => {
   try {
     const offset = parseInt(req.query.offset || "0", 10);
+    let userInterests = [];
+    if (req.session.user) {
+      const interestsRes = await pool.query(`
+        SELECT category, COUNT(*) as weight 
+        FROM videos v 
+        JOIN likes l ON v.id = l.video_id 
+        JOIN users u ON l.user_handle = u.handle 
+        WHERE u.username = $1 
+        GROUP BY category 
+        ORDER BY weight DESC 
+        LIMIT 3
+      `, [req.session.user]);
+      userInterests = interestsRes.rows.map(r => r.category);
+    }
+
     const result = await pool.query(`
       SELECT v.*, u.name AS author_name, u.avatar_url AS author_avatar,
       (SELECT COUNT(*) FROM comments c WHERE c.video_id = v.id) AS comment_count,
       (SELECT COUNT(*) FROM likes l WHERE l.video_id = v.id) AS likes_count
       FROM videos v
       JOIN users u ON v.user_handle = u.handle
-      ORDER BY v.timestamp DESC
+      ORDER BY 
+        CASE WHEN v.category = ANY($2::text[]) THEN 0 ELSE 1 END,
+        v.timestamp DESC
       LIMIT 20 OFFSET $1
-    `, [offset]);
+    `, [offset, userInterests]);
 
     let followingSet = new Set();
     let likedSet = new Set();
@@ -346,6 +371,12 @@ app.post("/api/like/:videoId", requireLogin, async (req, res, next) => {
       return res.json({ success: true, liked: false });
     } else {
       await pool.query("INSERT INTO likes (user_handle, video_id) VALUES ($1, $2)", [handle, videoId]);
+      
+      const video = await pool.query("SELECT user_handle FROM videos WHERE id = $1", [videoId]);
+      if (video.rows[0]) {
+        await createNotification(video.rows[0].user_handle, handle, "like", videoId);
+      }
+
       return res.json({ success: true, liked: true });
     }
   } catch (error) {
@@ -376,6 +407,12 @@ app.post("/api/save/:videoId", requireLogin, async (req, res, next) => {
       return res.json({ success: true, saved: false });
     } else {
       await pool.query("INSERT INTO saves (user_handle, video_id) VALUES ($1, $2)", [handle, videoId]);
+      
+      const video = await pool.query("SELECT user_handle FROM videos WHERE id = $1", [videoId]);
+      if (video.rows[0]) {
+        await createNotification(video.rows[0].user_handle, handle, "save", videoId);
+      }
+
       return res.json({ success: true, saved: true });
     }
   } catch (error) {
@@ -487,8 +524,74 @@ app.post("/api/follow", requireLogin, async (req, res, next) => {
       return res.json({ success: true, following: false });
     } else {
       await pool.query("INSERT INTO follows (follower_handle, following_handle) VALUES ($1, $2)", [myHandle, target_handle]);
+      await createNotification(target_handle, myHandle, "follow");
       return res.json({ success: true, following: true });
     }
+  } catch (error) {
+    return next(error);
+  }
+});
+
+app.get("/api/notifications", requireLogin, async (req, res, next) => {
+  try {
+    const user = await pool.query("SELECT handle FROM users WHERE username = $1", [req.session.user]);
+    const handle = user.rows[0]?.handle;
+
+    const result = await pool.query(`
+      SELECT n.*, u.name AS actor_name, u.avatar_url AS actor_avatar
+      FROM notifications n
+      JOIN users u ON n.actor_handle = u.handle
+      WHERE n.user_handle = $1
+      ORDER BY n.timestamp DESC
+      LIMIT 50
+    `, [handle]);
+
+    return res.json({ success: true, notifications: result.rows });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+app.post("/api/notifications/read", requireLogin, async (req, res, next) => {
+  try {
+    const user = await pool.query("SELECT handle FROM users WHERE username = $1", [req.session.user]);
+    const handle = user.rows[0]?.handle;
+    await pool.query("UPDATE notifications SET is_read = TRUE WHERE user_handle = $1", [handle]);
+    return res.json({ success: true });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+app.get("/api/playlists", requireLogin, async (req, res, next) => {
+  try {
+    const user = await pool.query("SELECT handle FROM users WHERE username = $1", [req.session.user]);
+    const handle = user.rows[0]?.handle;
+    const result = await pool.query("SELECT * FROM playlists WHERE user_handle = $1 ORDER BY timestamp DESC", [handle]);
+    return res.json({ success: true, playlists: result.rows });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+app.post("/api/playlists", requireLogin, async (req, res, next) => {
+  try {
+    const { name, description } = req.body;
+    const user = await pool.query("SELECT handle FROM users WHERE username = $1", [req.session.user]);
+    const handle = user.rows[0]?.handle;
+    await pool.query("INSERT INTO playlists (user_handle, name, description) VALUES ($1, $2, $3)", [handle, name, description]);
+    return res.json({ success: true });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+app.post("/api/playlists/add", requireLogin, async (req, res, next) => {
+  try {
+    const { playlist_id, video_id } = req.body;
+    const posRes = await pool.query("SELECT COALESCE(MAX(position), 0) + 1 as next_pos FROM playlist_videos WHERE playlist_id = $1", [playlist_id]);
+    await pool.query("INSERT INTO playlist_videos (playlist_id, video_id, position) VALUES ($1, $2, $3)", [playlist_id, video_id, posRes.rows[0].next_pos]);
+    return res.json({ success: true });
   } catch (error) {
     return next(error);
   }
@@ -563,6 +666,16 @@ io.on("connection", (socket) => {
     if (handle) {
       socket.join(handle);
     }
+  });
+
+  socket.on("join-room", (room) => {
+    socket.join(`room-${room}`);
+    console.log(`User joined study room: ${room}`);
+  });
+
+  socket.on("room-message", (data) => {
+    const { room, message, sender } = data;
+    io.to(`room-${room}`).emit("room-message", { sender, message, timestamp: new Date() });
   });
 });
 

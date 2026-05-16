@@ -16,7 +16,7 @@ const navItems = [
   ["/", "home", "fa-solid fa-house", "Home"],
   ["/discover", "discover", "fa-solid fa-compass", "Discover"],
   ["/upload", "upload", "fa-solid fa-plus", ""],
-  ["/inbox", "inbox", "fa-solid fa-message", "Inbox"],
+  ["/activity", "activity", "fa-solid fa-bell", "Activity"],
   ["/profile", "profile", "fa-solid fa-user", "Profile"]
 ];
 
@@ -56,14 +56,11 @@ function useRoute() {
 function BottomNav({ active }) {
   return (
     <nav className="bottom-nav">
-      {navItems.map(([href, key, icon, label]) => (
-        <a key={key} href={href} className={`nav-item ${active === key ? "active" : ""} ${key === "upload" ? "upload-btn" : ""}`} onClick={(event) => {
-          event.preventDefault();
-          go(href);
-        }}>
-          {key === "upload" ? <div className="upload-icon-wrapper"><i className={icon}></i></div> : <><i className={icon}></i><span>{label}</span></>}
-        </a>
-      ))}
+      <button className={`nav-item ${active === "home" ? "active" : ""}`} onClick={() => go("/")}><i className="fa-solid fa-house"></i><span>Home</span></button>
+      <button className={`nav-item ${active === "discover" ? "active" : ""}`} onClick={() => go("/discover")}><i className="fa-solid fa-magnifying-glass"></i><span>Discover</span></button>
+      <button className="nav-item upload-btn" onClick={() => go("/upload")}><i className="fa-solid fa-plus"></i></button>
+      <button className={`nav-item ${active === "activity" ? "active" : ""}`} onClick={() => go("/activity")} style={{position: 'relative'}}><i className="fa-solid fa-bell"></i><span>Activity</span></button>
+      <button className={`nav-item ${active === "profile" ? "active" : ""}`} onClick={() => go("/profile")}><i className="fa-solid fa-user"></i><span>Profile</span></button>
     </nav>
   );
 }
@@ -493,10 +490,80 @@ function Home() {
   );
 }
 
+function Activity() {
+  const [notifications, setNotifications] = useState([]);
+  
+  useEffect(() => {
+    api("/api/notifications").then(res => res.json()).then(data => {
+      if (data.success) setNotifications(data.notifications);
+    });
+    api("/api/notifications/read", { method: "POST" });
+  }, []);
+
+  const typeLabel = { "like": "liked your video", "save": "saved your video", "follow": "started following you" };
+
+  return (
+    <Shell title="Activity" active="activity">
+      <div className="notification-list">
+        {notifications.length ? notifications.map(n => (
+          <div key={n.id} className={`notification-item ${!n.is_read ? 'unread' : ''}`}>
+            <img src={n.actor_avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(n.actor_name)}&background=random&color=fff`} alt="" className="notif-avatar" />
+            <div className="notif-content">
+              <strong>{n.actor_name}</strong> {typeLabel[n.type] || n.type}
+              <div className="notif-time">{new Date(n.timestamp).toLocaleDateString()}</div>
+            </div>
+            {n.video_id && <div className="notif-video-preview"><i className="fa-solid fa-play"></i></div>}
+          </div>
+        )) : <Empty icon="fa-solid fa-bell-slash" text="No notifications yet." />}
+      </div>
+    </Shell>
+  );
+}
+
+function StudyRoom() {
+  const [room, setRoom] = useState(new URLSearchParams(window.location.search).get("room") || "General");
+  const [messages, setMessages] = useState([]);
+  const [text, setText] = useState("");
+  const socket = getSocket();
+
+  useEffect(() => {
+    socket.emit("join-room", room);
+    const handleMsg = (msg) => setMessages(prev => [...prev, msg]);
+    socket.on("room-message", handleMsg);
+    return () => socket.off("room-message", handleMsg);
+  }, [room]);
+
+  const send = (e) => {
+    e.preventDefault();
+    if (!text.trim()) return;
+    socket.emit("room-message", { room, message: text, sender: localStorage.getItem("userName") });
+    setText("");
+  };
+
+  return (
+    <Shell title={`${room} Room`} active="discover" back>
+      <div className="chat-area">
+        <div className="chat-messages">
+          {messages.map((m, i) => (
+            <div key={i} className="chat-bubble">
+              <strong>{m.sender}:</strong> {m.message}
+            </div>
+          ))}
+        </div>
+        <form onSubmit={send} className="chat-input-row">
+          <input className="form-control" placeholder="Message the room..." value={text} onChange={e => setText(e.target.value)} />
+          <button className="icon-btn" style={{background: '#4facfe'}}><i className="fa-solid fa-paper-plane"></i></button>
+        </form>
+      </div>
+    </Shell>
+  );
+}
+
 function Discover() {
   const urlParams = new URLSearchParams(window.location.search);
   const [query, setQuery] = useState(urlParams.get("q") || "");
   const [results, setResults] = useState([]);
+  const [followed, setFollowed] = useState({});
 
   useEffect(() => {
     if (query.trim().length > 0) {
@@ -507,6 +574,18 @@ function Discover() {
       setResults([]);
     }
   }, [query]);
+
+  async function follow(handle) {
+    const res = await api("/api/follow", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target_handle: handle })
+    });
+    const data = await res.json();
+    if (data.success) {
+      setFollowed({ ...followed, [handle]: data.following });
+    }
+  }
 
   const cards = [
     ["Frontend Dev", "https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=400&q=80"],
@@ -548,6 +627,16 @@ function Discover() {
       )}
 
       <section className="glass-card ai-recommendation"><h3><i className="fa-solid fa-wand-magic-sparkles"></i> AI Picks for You</h3><p>Based on your recent interest in Web Development</p><button className="btn-primary compact">Start Learning React</button></section>
+      <h2 className="section-title">Study Rooms <span>Join a room</span></h2>
+      <div className="trending-grid" style={{marginBottom: '20px'}}>
+        {["Coding", "Business", "Motivation", "DIY"].map(room => (
+          <div className="trending-card" key={room} onClick={() => go(`/studyroom?room=${room}`)} style={{background: 'linear-gradient(45deg, #2c3e50, #4facfe)'}}>
+            <i className="fa-solid fa-users" style={{fontSize: '1.5rem', marginBottom: '10px'}}></i>
+            <span>{room} Room</span>
+          </div>
+        ))}
+      </div>
+      
       <h2 className="section-title">Trending Categories <span>See all</span></h2>
       <div className="trending-grid">{cards.map(([label, image]) => <div className="trending-card" key={label} style={{ backgroundImage: `url(${image})` }}><span>{label}</span></div>)}</div>
     </Shell>
@@ -723,8 +812,16 @@ function Profile() {
         </section>
       )}
       <section className="gamification-section"><div className="streak-card"><i className="fa-solid fa-fire"></i><div><strong>{current.streak} Days</strong><span>Learning Streak!</span></div></div><div className="badges-card"><span>Earned Badges</span><div className="badge-icons">{current.badges.map((badge) => <i key={badge.name} className={badge.icon} title={badge.name}></i>)}</div></div></section>
-      <div className="tabs">{["fa-solid fa-border-all", "fa-solid fa-lock", "fa-solid fa-bookmark", "fa-solid fa-heart"].map((icon, index) => <div className={`tab ${index === activeTab ? "active" : ""}`} key={icon} onClick={() => setActiveTab(index)}><i className={icon}></i></div>)}</div>
-      <div className="video-grid">{displayVideos.length ? displayVideos.map((video) => <div className="grid-item" key={video.id}>{video.thumbnail_url ? <img src={video.thumbnail_url} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt=""/> : <video src={video.url} muted loop preload="metadata" onLoadedData={(e) => { e.target.currentTime = 1; }}></video>}<div className="views"><i className="fa-solid fa-play"></i> {video.views}</div></div>) : <Empty icon={activeTab === 2 ? "fa-solid fa-bookmark" : "fa-solid fa-camera"} text={activeTab === 2 ? "No saved videos yet." : "No videos uploaded yet."} />}</div>
+      <div className="tabs">{["fa-solid fa-border-all", "fa-solid fa-list-ul", "fa-solid fa-bookmark", "fa-solid fa-heart"].map((icon, index) => <div className={`tab ${index === activeTab ? "active" : ""}`} key={icon} onClick={() => setActiveTab(index)}><i className={icon}></i></div>)}</div>
+      {activeTab === 1 && (
+        <div style={{padding: '0 20px', marginBottom: '20px'}}>
+           <button className="btn-primary compact" style={{width: '100%', background: 'rgba(255,255,255,0.1)'}} onClick={() => {
+             const name = prompt("Playlist name:");
+             if(name) api("/api/playlists", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({name, description: ""}) }).then(() => alert("Created!"));
+           }}>+ Create New Skill Path</button>
+        </div>
+      )}
+      <div className="video-grid">{displayVideos.length ? displayVideos.map((video) => <div className="grid-item" key={video.id}>{video.thumbnail_url ? <img src={video.thumbnail_url} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt=""/> : <video src={video.url} muted loop preload="metadata" onLoadedData={(e) => { e.target.currentTime = 1; }}></video>}<div className="views"><i className="fa-solid fa-play"></i> {video.views}</div></div>) : <Empty icon={activeTab === 2 ? "fa-solid fa-bookmark" : (activeTab === 1 ? "fa-solid fa-list-ul" : "fa-solid fa-camera")} text={activeTab === 2 ? "No saved videos yet." : (activeTab === 1 ? "No skill paths created." : "No videos uploaded yet.")} />}</div>
       {feedbackModal && (
         <div className="modal-overlay" style={{zIndex: 2000}}>
           <div className="glass-card modal-content" style={{maxWidth: '400px', width: '90%'}}>

@@ -99,6 +99,37 @@ export async function initDb() {
     )
   `);
 
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS notifications (
+      id SERIAL PRIMARY KEY,
+      user_handle TEXT NOT NULL,
+      actor_handle TEXT NOT NULL,
+      type TEXT NOT NULL,
+      video_id INTEGER REFERENCES videos(id) ON DELETE CASCADE,
+      timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      is_read BOOLEAN DEFAULT FALSE
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS playlists (
+      id SERIAL PRIMARY KEY,
+      user_handle TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS playlist_videos (
+      playlist_id INTEGER REFERENCES playlists(id) ON DELETE CASCADE,
+      video_id INTEGER REFERENCES videos(id) ON DELETE CASCADE,
+      position INTEGER NOT NULL,
+      PRIMARY KEY (playlist_id, video_id)
+    )
+  `);
+
   try {
     await pool.query(`ALTER TABLE videos ADD COLUMN IF NOT EXISTS thumbnail_filename TEXT DEFAULT ''`);
   } catch (err) {
