@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { io } from "socket.io-client";
 
 function LogoIcon() {
@@ -202,24 +202,60 @@ function Home() {
   const [activeCategory, setActiveCategory] = useState("For You");
   const [liked, setLiked] = useState({});
   const [followed, setFollowed] = useState({});
+  const [menuOpen, setMenuOpen] = useState(null);
+  const [blockedUsers, setBlockedUsers] = useState(new Set());
+  const [commentsModal, setCommentsModal] = useState(null);
+  const [commentsData, setCommentsData] = useState([]);
+  const [newComment, setNewComment] = useState("");
 
-  useEffect(() => {
-    api("/api/feed").then((res) => res.json()).then((data) => {
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [isMuted, setIsMuted] = useState(true);
+  const [doubleTapHeart, setDoubleTapHeart] = useState(null);
+  const [saved, setSaved] = useState({});
+  const viewedVideosRef = useRef(new Set());
+
+  const loadFeed = (reset = false) => {
+    const currentOffset = reset ? 0 : offset;
+    api(`/api/feed?offset=${currentOffset}`).then((res) => res.json()).then((data) => {
       if (data.success) {
-        setVideos(data.videos.map(video => ({
+        const newVideos = data.videos.map(video => ({
           ...video,
-          url: (window.CONFIG?.API_URL || "") + `/uploads/${video.filename}`,
-          likes: video.likes,
-          views: video.views
-        })));
+          url: (window.CONFIG?.API_URL || "") + `/uploads/${video.filename}`
+        }));
+        setVideos(prev => reset ? newVideos : [...prev, ...newVideos]);
+        
+        const newLiked = { ...liked };
+        const newFollowed = { ...followed };
+        const newSaved = { ...saved };
+        data.videos.forEach(v => { 
+          newLiked[v.id] = v.is_liked;
+          newFollowed[v.handle] = v.is_followed; 
+          newSaved[v.id] = v.is_saved;
+        });
+        setLiked(newLiked);
+        setFollowed(newFollowed);
+        setSaved(newSaved);
+        
+        if (data.videos.length < 20) setHasMore(false);
+        setOffset(currentOffset + 20);
       }
     });
+  };
+
+  useEffect(() => {
+    loadFeed(true);
   }, []);
 
   useEffect(() => {
     const observer = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
-        if (entry.isIntersecting) entry.target.play().catch(() => {});
+        if (entry.isIntersecting) {
+           entry.target.play().catch(() => {});
+           if (entry.target.id === `video-${videos.length - 1}` && hasMore) {
+             loadFeed();
+           }
+        }
         else {
           entry.target.pause();
           entry.target.currentTime = 0;
@@ -228,7 +264,50 @@ function Home() {
     }, { threshold: 0.6 });
     document.querySelectorAll("video").forEach((video) => observer.observe(video));
     return () => observer.disconnect();
-  }, [videos]);
+  }, [videos, hasMore, offset]);
+
+  async function toggleLike(videoId) {
+    const res = await api(`/api/like/${videoId}`, { method: "POST" });
+    const data = await res.json();
+    if (data.success) {
+      setLiked(prev => ({ ...prev, [videoId]: data.liked }));
+      setVideos(prev => prev.map(v => v.id === videoId ? { ...v, likes: v.likes + (data.liked ? 1 : -1) } : v));
+    }
+  }
+
+  async function toggleSave(videoId) {
+    const res = await api(`/api/save/${videoId}`, { method: "POST" });
+    const data = await res.json();
+    if (data.success) {
+      setSaved(prev => ({ ...prev, [videoId]: data.saved }));
+    }
+  }
+
+  function handleVideoClick(event, videoId) {
+    const time = new Date().getTime();
+    if (time - (event.currentTarget.lastClick || 0) < 300) {
+      // Double tap
+      setDoubleTapHeart(videoId);
+      setTimeout(() => setDoubleTapHeart(null), 1000);
+      if (!liked[videoId]) toggleLike(videoId);
+    } else {
+      if (event.currentTarget.paused) event.currentTarget.play();
+      else event.currentTarget.pause();
+    }
+    event.currentTarget.lastClick = time;
+  }
+
+  function handleShare(video) {
+    if (navigator.share) {
+      navigator.share({
+        title: video.title,
+        text: `Check out this video by ${video.author_name} on SkillTok!`,
+        url: window.location.origin,
+      }).catch(() => {});
+    } else {
+      alert("Sharing is not supported on this browser.");
+    }
+  }
 
   async function follow(handle) {
     const res = await api("/api/follow", {
@@ -252,6 +331,44 @@ function Home() {
     likes: 0
   }];
 
+  function blockUser(handle) {
+    if (window.confirm(`Block ${handle}? You will no longer see their videos.`)) {
+      setBlockedUsers(prev => new Set(prev).add(handle));
+      setMenuOpen(null);
+    }
+  }
+
+  function reportVideo(id) {
+    if (window.confirm("Report this video for violating community guidelines?")) {
+      alert("Report submitted successfully. We will review this content.");
+      setMenuOpen(null);
+    }
+  }
+
+  async function openComments(videoId) {
+    setCommentsModal(videoId);
+    setCommentsData([]);
+    const res = await api(`/api/comments/${videoId}`);
+    const data = await res.json();
+    if (data.success) setCommentsData(data.comments);
+  }
+
+  async function postComment(event) {
+    event.preventDefault();
+    if (!newComment.trim() || !commentsModal) return;
+    const res = await api(`/api/comments/${commentsModal}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: newComment })
+    });
+    const data = await res.json();
+    if (data.success) {
+      setNewComment("");
+      openComments(commentsModal); // Refresh
+      setVideos(prev => prev.map(v => v.id === commentsModal ? { ...v, comment_count: (v.comment_count || 0) + 1 } : v));
+    }
+  }
+
   return (
     <div className="app-container">
       <header className="top-nav">
@@ -261,35 +378,119 @@ function Home() {
         </div>
       </header>
       <main className="video-feed">
-        {feed.map((video) => (
+        {feed.filter(v => !blockedUsers.has(v.handle)).map((video) => (
           <section className="video-container" key={video.id}>
-            <video src={video.url} loop playsInline muted={video.id === "welcome"} onClick={(event) => event.currentTarget.paused ? event.currentTarget.play() : event.currentTarget.pause()}></video>
+            <video 
+              id={`video-${feed.indexOf(video)}`}
+              src={video.url} 
+              loop 
+              playsInline 
+              muted={isMuted} 
+              onError={(e) => { e.target.src = "https://www.w3schools.com/html/mov_bbb.mp4"; }}
+              onClick={(e) => handleVideoClick(e, video.id)}
+              onTimeUpdate={(e) => {
+                const progress = (e.target.currentTime / e.target.duration) * 100;
+                const bar = document.getElementById(`progress-${video.id}`);
+                if(bar) bar.style.width = `${progress}%`;
+
+                if (e.target.currentTime > 3 && !viewedVideosRef.current.has(video.id) && video.id !== "welcome") {
+                  viewedVideosRef.current.add(video.id);
+                  api(`/api/view/${video.id}`, { method: "POST" });
+                }
+              }}>
+            </video>
+            
+            <button onClick={() => setIsMuted(!isMuted)} style={{position: 'absolute', top: '80px', right: '20px', zIndex: 10, background: 'rgba(0,0,0,0.4)', border: 'none', borderRadius: '50%', color: 'white', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(5px)'}}><i className={`fa-solid ${isMuted ? 'fa-volume-xmark' : 'fa-volume-high'}`}></i></button>
+
+            {doubleTapHeart === video.id && (
+              <div style={{position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 20, color: '#ff0844', fontSize: '100px', animation: 'heartPop 1s ease-out forwards', textShadow: '0 0 20px rgba(0,0,0,0.5)'}}>
+                <i className="fa-solid fa-heart"></i>
+              </div>
+            )}
+
             <div className="video-overlay-top"></div>
             <div className="video-overlay-bottom"></div>
+            
+            <div style={{position: 'absolute', bottom: 0, left: 0, right: 0, height: '4px', background: 'rgba(255,255,255,0.2)', zIndex: 5}}>
+              <div id={`progress-${video.id}`} style={{height: '100%', background: '#4facfe', width: '0%', transition: 'width 0.1s linear'}}></div>
+            </div>
+
             <aside className="action-sidebar">
-              <button className={`action-btn ${liked[video.id] ? "liked" : ""}`} onClick={() => setLiked({ ...liked, [video.id]: !liked[video.id] })}><i className="fa-solid fa-heart"></i><span>{video.likes + (liked[video.id] ? 1 : 0)}</span></button>
-              <button className="action-btn"><i className="fa-solid fa-comment-dots"></i><span>{Math.floor(Math.random() * 100)}</span></button>
-              <button className="action-btn"><i className="fa-solid fa-bookmark"></i><span>Save</span></button>
-              <button className="action-btn"><i className="fa-solid fa-share"></i><span>Share</span></button>
+              <button className={`action-btn ${liked[video.id] ? "liked" : ""}`} onClick={() => toggleLike(video.id)}><i className="fa-solid fa-heart"></i><span>{video.likes}</span></button>
+              <button className="action-btn" onClick={() => openComments(video.id)}><i className="fa-solid fa-comment-dots"></i><span>{video.comment_count || 0}</span></button>
+              <button className={`action-btn ${saved[video.id] ? "liked" : ""}`} style={{color: saved[video.id] ? '#f1c40f' : 'white'}} onClick={() => toggleSave(video.id)}><i className="fa-solid fa-bookmark"></i><span>Save</span></button>
+              <button className="action-btn" onClick={() => handleShare(video)}><i className="fa-solid fa-share"></i><span>Share</span></button>
+              
+              <div style={{position: 'relative'}}>
+                <button className="action-btn" onClick={() => setMenuOpen(video.id === menuOpen ? null : video.id)}><i className="fa-solid fa-ellipsis-vertical"></i></button>
+                {menuOpen === video.id && (
+                  <div className="glass-card" style={{position: 'absolute', bottom: '50px', right: '0', zIndex: 10, padding: '10px', borderRadius: '10px', display: 'flex', flexDirection: 'column', gap: '8px', minWidth: '120px'}}>
+                    <button className="btn-primary compact" style={{background: 'rgba(255,50,50,0.8)', padding: '5px 10px', fontSize: '0.9rem'}} onClick={() => reportVideo(video.id)}><i className="fa-solid fa-flag"></i> Report</button>
+                    <button className="btn-primary compact" style={{background: 'rgba(255,50,50,0.8)', padding: '5px 10px', fontSize: '0.9rem'}} onClick={() => blockUser(video.handle)}><i className="fa-solid fa-ban"></i> Block</button>
+                  </div>
+                )}
+              </div>
+
               <div className="profile-pic" onClick={() => follow(video.handle)}>
                 <img src={`https://ui-avatars.com/api/?name=${encodeURIComponent(video.author_name)}&background=random&color=fff`} alt="" />
-                {!followed[video.handle] && <div className="follow-badge"><i className="fa-solid fa-plus"></i></div>}
+                {!followed[video.handle] ? <div className="follow-badge"><i className="fa-solid fa-plus"></i></div> : <div className="follow-badge" style={{background: '#4facfe'}}><i className="fa-solid fa-check"></i></div>}
               </div>
             </aside>
             <div className="video-info">
               <h2 className="creator-name">{video.handle} <span>{video.category}</span></h2>
-              <p className="video-desc">{video.title}</p>
+              <p className="video-desc">
+                {video.title.split(/(\s+)/).map((word, i) => word.startsWith('#') ? <span key={i} style={{color: '#4facfe', cursor: 'pointer', fontWeight: 'bold'}} onClick={() => go('/discover?q=' + encodeURIComponent(word.slice(1)))}>{word}</span> : word)}
+              </p>
               <div className="music-ticker"><i className="fa-solid fa-music"></i><span>Original Audio - {video.author_name}</span></div>
             </div>
           </section>
         ))}
       </main>
+
+      {commentsModal && (
+        <div className="comments-overlay glass-card" style={{position: 'absolute', bottom: 0, left: 0, right: 0, height: '60vh', background: 'rgba(20,20,30,0.95)', borderTopLeftRadius: '20px', borderTopRightRadius: '20px', zIndex: 100, display: 'flex', flexDirection: 'column', boxShadow: '0 -5px 20px rgba(0,0,0,0.5)', padding: '15px'}}>
+          <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', paddingBottom: '10px', borderBottom: '1px solid rgba(255,255,255,0.1)'}}>
+            <h3 style={{margin: 0}}>Comments</h3>
+            <button className="icon-btn" onClick={() => setCommentsModal(null)}><i className="fa-solid fa-xmark"></i></button>
+          </div>
+          <div className="comments-list" style={{flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '15px', paddingBottom: '10px'}}>
+            {commentsData.length ? commentsData.map(c => (
+              <div key={c.id} style={{display: 'flex', gap: '10px'}}>
+                <img src={`https://ui-avatars.com/api/?name=${encodeURIComponent(c.author_name)}&background=random&color=fff&size=30`} style={{borderRadius: '50%', width: 30, height: 30}} alt="" />
+                <div>
+                  <div style={{fontSize: '0.8rem', color: 'rgba(255,255,255,0.6)', fontWeight: 'bold'}}>{c.author_name} <span style={{fontWeight: 'normal'}}>{c.user_handle}</span></div>
+                  <div style={{fontSize: '0.9rem', marginTop: '2px'}}>{c.content}</div>
+                </div>
+              </div>
+            )) : <div style={{textAlign: 'center', color: 'rgba(255,255,255,0.5)', marginTop: '20px'}}>No comments yet. Be the first to comment!</div>}
+          </div>
+          <form onSubmit={postComment} style={{display: 'flex', gap: '10px', marginTop: '10px'}}>
+            <input type="text" className="form-control" style={{flex: 1, margin: 0, background: 'rgba(255,255,255,0.1)', border: 'none'}} placeholder="Add comment..." value={newComment} onChange={e => setNewComment(e.target.value)} />
+            <button type="submit" className="btn-primary compact" disabled={!newComment.trim()}><i className="fa-solid fa-paper-plane"></i></button>
+          </form>
+        </div>
+      )}
+
       <BottomNav active="home" />
     </div>
   );
 }
 
 function Discover() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const [query, setQuery] = useState(urlParams.get("q") || "");
+  const [results, setResults] = useState([]);
+
+  useEffect(() => {
+    if (query.trim().length > 0) {
+      api(`/api/search?q=${encodeURIComponent(query)}`)
+        .then(res => res.json())
+        .then(data => { if (data.success) setResults(data.users); });
+    } else {
+      setResults([]);
+    }
+  }, [query]);
+
   const cards = [
     ["Frontend Dev", "https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=400&q=80"],
     ["Business", "https://images.unsplash.com/photo-1542744173-8e7e53415bb0?w=400&q=80"],
@@ -298,7 +499,30 @@ function Discover() {
   ];
   return (
     <Shell title="Discover" active="discover">
-      <div className="search-bar"><i className="fa-solid fa-magnifying-glass"></i><input placeholder="Search skills, creators, topics..." /></div>
+      <div className="search-bar">
+        <i className="fa-solid fa-magnifying-glass"></i>
+        <input placeholder="Search users, skills, topics..." value={query} onChange={(e) => setQuery(e.target.value)} />
+      </div>
+      
+      {query.length > 0 && (
+        <div className="glass-card" style={{marginBottom: '20px'}}>
+          <h3 style={{marginBottom: '10px', fontSize: '1rem'}}>Search Results</h3>
+          {results.length ? results.map(u => (
+            <div key={u.handle} style={{display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.1)'}}>
+              <img src={`https://ui-avatars.com/api/?name=${encodeURIComponent(u.name)}&background=random&color=fff&size=40`} style={{borderRadius: '50%'}} alt="" />
+              <div style={{flex: 1}}>
+                <div style={{fontWeight: 'bold', fontSize: '0.9rem'}}>{u.name}</div>
+                <div style={{fontSize: '0.8rem', color: 'rgba(255,255,255,0.7)'}}>{u.handle}</div>
+              </div>
+              <button className="btn-primary compact" style={{padding: '5px 15px'}} onClick={() => {
+                 api("/api/follow", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ target_handle: u.handle }) });
+                 alert(`Followed ${u.name}!`);
+              }}>Follow</button>
+            </div>
+          )) : <div style={{fontSize: '0.9rem', color: 'rgba(255,255,255,0.7)'}}>No users found matching "{query}"</div>}
+        </div>
+      )}
+
       <section className="glass-card ai-recommendation"><h3><i className="fa-solid fa-wand-magic-sparkles"></i> AI Picks for You</h3><p>Based on your recent interest in Web Development</p><button className="btn-primary compact">Start Learning React</button></section>
       <h2 className="section-title">Trending Categories <span>See all</span></h2>
       <div className="trending-grid">{cards.map(([label, image]) => <div className="trending-card" key={label} style={{ backgroundImage: `url(${image})` }}><span>{label}</span></div>)}</div>
@@ -311,6 +535,36 @@ function Upload() {
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("Motivation & Mindset");
   const [status, setStatus] = useState("");
+  const [thumbnail, setThumbnail] = useState("");
+
+  function generateThumbnail(videoFile) {
+    return new Promise((resolve) => {
+      const video = document.createElement("video");
+      video.src = URL.createObjectURL(videoFile);
+      video.currentTime = 1; 
+      video.muted = true;
+      video.playsInline = true;
+      video.onloadeddata = () => { video.currentTime = 1; };
+      video.onseeked = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = video.videoWidth || 400;
+        canvas.height = video.videoHeight || 600;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", 0.7));
+      };
+      video.onerror = () => resolve("");
+    });
+  }
+
+  async function handleFileChange(event) {
+    const selected = event.target.files[0];
+    if (selected) {
+      setFile(selected);
+      const thumbBase64 = await generateThumbnail(selected);
+      setThumbnail(thumbBase64);
+    }
+  }
 
   async function submit(event) {
     event.preventDefault();
@@ -319,6 +573,7 @@ function Upload() {
     formData.append("video", file);
     formData.append("title", title);
     formData.append("category", category);
+    if (thumbnail) formData.append("thumbnail", thumbnail);
     setStatus("Uploading... Please wait.");
     const response = await api("/api/upload", { method: "POST", body: formData });
     const data = await response.json();
@@ -330,8 +585,9 @@ function Upload() {
   return (
     <Shell title="Create" active="upload" back>
       <form onSubmit={submit}>
-        <label className="upload-area"><i className="fa-solid fa-cloud-arrow-up"></i><h3>Tap to upload video</h3><p>MP4 or WebM (Max 200 MB)</p><input type="file" accept="video/mp4,video/webm" hidden onChange={(event) => setFile(event.target.files[0])} /></label>
-        {file && <div className="file-selected">Selected: {file.name}</div>}
+        <label className="upload-area"><i className="fa-solid fa-cloud-arrow-up"></i><h3>Tap to upload video</h3><p>MP4 or WebM (Max 200 MB)</p><input type="file" accept="video/mp4,video/webm" hidden onChange={handleFileChange} /></label>
+        {thumbnail && <div style={{textAlign: 'center', marginBottom: 15}}><img src={thumbnail} alt="Thumbnail preview" style={{width: 100, height: 150, objectFit: 'cover', borderRadius: 10, border: '2px solid #4facfe'}} /></div>}
+        {file && <div className="file-selected" style={{marginTop: 5}}>Selected: {file.name}</div>}
         <label className="form-group"><span>Description</span><textarea className="form-control" value={title} required placeholder="What will they learn? #hashtags" onChange={(event) => setTitle(event.target.value)}></textarea></label>
         <label className="form-group"><span>Category</span><select className="form-control" value={category} onChange={(event) => setCategory(event.target.value)}>{["Motivation & Mindset", "Courses & Academics", "Kids Special (Under 12)", "Youth Trends", "Farming & Agriculture", "DIY & Gardening", "World & Culture", "Tech & Coding", "Business & Finance"].map((item) => <option key={item}>{item}</option>)}</select></label>
         <div className="settings-row"><div><strong>Monetization</strong><span>Allow ads on this video</span></div><div className="toggle"><span></span></div></div>
@@ -345,14 +601,33 @@ function Upload() {
 function Profile() {
   const [user, setUser] = useState(null);
   const [videos, setVideos] = useState([]);
+  const [savedVideos, setSavedVideos] = useState([]);
+  const [activeTab, setActiveTab] = useState(0);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editForm, setEditForm] = useState({ name: "", bio: "", avatar_url: "" });
 
   useEffect(() => {
-    api("/api/me").then((res) => res.json()).then((data) => data.success && setUser(data.user));
+    api("/api/me").then((res) => res.json()).then((data) => {
+      if(data.success) {
+        setUser(data.user);
+        setEditForm({ name: data.user.name, bio: data.user.bio || "", avatar_url: data.user.avatar_url || "" });
+      }
+    });
     api("/api/my_videos").then((res) => res.json()).then((data) => {
       if (data.success) {
         setVideos(data.videos.map(video => ({
           ...video,
-          url: (window.CONFIG?.API_URL || "") + `/uploads/${video.filename}`
+          url: (window.CONFIG?.API_URL || "") + `/uploads/${video.filename}`,
+          thumbnail_url: video.thumbnail_url ? (window.CONFIG?.API_URL || "") + video.thumbnail_url : ""
+        })));
+      }
+    });
+    api("/api/saved_videos").then((res) => res.json()).then((data) => {
+      if (data.success) {
+        setSavedVideos(data.videos.map(video => ({
+          ...video,
+          url: (window.CONFIG?.API_URL || "") + `/uploads/${video.filename}`,
+          thumbnail_url: video.thumbnail_url ? (window.CONFIG?.API_URL || "") + video.thumbnail_url : ""
         })));
       }
     });
@@ -363,13 +638,51 @@ function Profile() {
     go("/login");
   }
 
-  const current = user || { name: "Loading...", handle: "@loading", streak: 0, stats: { videos: 0, views: 0, likes: 0 }, badges: [] };
+  async function saveProfile(e) {
+    e.preventDefault();
+    const res = await api("/api/profile", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(editForm)
+    });
+    const data = await res.json();
+    if(data.success) {
+      setUser({ ...user, ...editForm });
+      setIsEditing(false);
+    }
+  }
+
+  const current = user || { name: "Loading...", handle: "@loading", bio: "", avatar_url: "", streak: 0, stats: { videos: 0, views: 0, likes: 0 }, badges: [] };
+  const avatarImage = current.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(current.name)}&background=4FACFE&color=fff`;
+
+  const displayVideos = activeTab === 2 ? savedVideos : videos;
+
   return (
     <Shell title="Profile" active="profile" right={<button className="icon-btn danger" onClick={logout}><i className="fa-solid fa-right-from-bracket"></i></button>}>
-      <section className="profile-header"><div className="profile-avatar"><img src={`https://ui-avatars.com/api/?name=${encodeURIComponent(current.name)}&background=4FACFE&color=fff`} alt="" /></div><h2 className="profile-name">{current.name}</h2><p className="profile-handle">{current.handle}</p><div className="stats-row">{["videos", "followers", "following", "likes"].map((key) => <div className="stat-box" key={key}><div className="stat-num">{current.stats[key]}</div><div className="stat-label">{key[0].toUpperCase() + key.slice(1)}</div></div>)}</div></section>
+      {isEditing ? (
+        <form onSubmit={saveProfile} className="glass-card">
+          <h3 style={{marginBottom: 15}}>Edit Profile</h3>
+          <label className="form-group"><span>Name</span><input className="form-control" value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} /></label>
+          <label className="form-group"><span>Bio</span><textarea className="form-control" value={editForm.bio} onChange={e => setEditForm({...editForm, bio: e.target.value})} style={{minHeight: '60px'}}></textarea></label>
+          <label className="form-group"><span>Avatar URL (Optional)</span><input className="form-control" placeholder="https://..." value={editForm.avatar_url} onChange={e => setEditForm({...editForm, avatar_url: e.target.value})} /></label>
+          <div style={{display: 'flex', gap: 10, marginTop: 15}}>
+             <button type="button" className="ghost-btn" style={{flex: 1, margin: 0, border: '1px solid rgba(255,255,255,0.2)', borderRadius: '12px'}} onClick={() => setIsEditing(false)}>Cancel</button>
+             <button type="submit" className="btn-primary compact" style={{flex: 1, padding: '10px'}}>Save</button>
+          </div>
+        </form>
+      ) : (
+        <section className="profile-header">
+          <div className="profile-avatar"><img src={avatarImage} alt="" /></div>
+          <h2 className="profile-name">{current.name}</h2>
+          <p className="profile-handle">{current.handle}</p>
+          {current.bio && <p style={{fontSize: '0.9rem', marginBottom: '15px', color: 'var(--text-secondary)', padding: '0 20px'}}>{current.bio}</p>}
+          <button className="btn-primary compact" style={{marginBottom: '20px', background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', color: 'white'}} onClick={() => setIsEditing(true)}>Edit Profile</button>
+          <div className="stats-row">{["videos", "followers", "following", "likes"].map((key) => <div className="stat-box" key={key}><div className="stat-num">{current.stats[key]}</div><div className="stat-label">{key[0].toUpperCase() + key.slice(1)}</div></div>)}</div>
+        </section>
+      )}
       <section className="gamification-section"><div className="streak-card"><i className="fa-solid fa-fire"></i><div><strong>{current.streak} Days</strong><span>Learning Streak!</span></div></div><div className="badges-card"><span>Earned Badges</span><div className="badge-icons">{current.badges.map((badge) => <i key={badge.name} className={badge.icon} title={badge.name}></i>)}</div></div></section>
-      <div className="tabs">{["fa-solid fa-border-all", "fa-solid fa-lock", "fa-solid fa-bookmark", "fa-solid fa-heart"].map((icon, index) => <div className={`tab ${index === 0 ? "active" : ""}`} key={icon}><i className={icon}></i></div>)}</div>
-      <div className="video-grid">{videos.length ? videos.map((video) => <div className="grid-item" key={video.id}><video src={video.url} muted loop onMouseEnter={(event) => event.currentTarget.play()} onMouseLeave={(event) => event.currentTarget.pause()}></video><div className="views"><i className="fa-solid fa-play"></i> {video.views}</div></div>) : <Empty icon="fa-solid fa-camera" text="No videos uploaded yet." />}</div>
+      <div className="tabs">{["fa-solid fa-border-all", "fa-solid fa-lock", "fa-solid fa-bookmark", "fa-solid fa-heart"].map((icon, index) => <div className={`tab ${index === activeTab ? "active" : ""}`} key={icon} onClick={() => setActiveTab(index)}><i className={icon}></i></div>)}</div>
+      <div className="video-grid">{displayVideos.length ? displayVideos.map((video) => <div className="grid-item" key={video.id}>{video.thumbnail_url ? <img src={video.thumbnail_url} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt=""/> : <video src={video.url} muted loop></video>}<div className="views"><i className="fa-solid fa-play"></i> {video.views}</div></div>) : <Empty icon={activeTab === 2 ? "fa-solid fa-bookmark" : "fa-solid fa-camera"} text={activeTab === 2 ? "No saved videos yet." : "No videos uploaded yet."} />}</div>
     </Shell>
   );
 }

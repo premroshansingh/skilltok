@@ -148,10 +148,17 @@ app.post("/api/upload", requireLogin, upload.single("video"), async (req, res, n
 
     const user = await pool.query("SELECT handle FROM users WHERE username = $1", [req.session.user]);
     const handle = user.rows[0]?.handle || "@unknown";
+    
+    let thumbFilename = "";
+    if (req.body.thumbnail) {
+      const base64Data = req.body.thumbnail.replace(/^data:image\/\w+;base64,/, "");
+      thumbFilename = `thumb_${Date.now()}.jpg`;
+      fs.writeFileSync(path.join(uploadDir, thumbFilename), base64Data, 'base64');
+    }
 
     await pool.query(
-      "INSERT INTO videos (user_handle, title, category, filename) VALUES ($1, $2, $3, $4)",
-      [handle, req.body.title || "Untitled", req.body.category || "Uncategorized", req.file.filename]
+      "INSERT INTO videos (user_handle, title, category, filename, thumbnail_filename) VALUES ($1, $2, $3, $4, $5)",
+      [handle, req.body.title || "Untitled", req.body.category || "Uncategorized", req.file.filename, thumbFilename]
     );
     return res.json({ success: true });
   } catch (error) {
@@ -161,13 +168,34 @@ app.post("/api/upload", requireLogin, upload.single("video"), async (req, res, n
 
 app.get("/api/feed", async (_req, res, next) => {
   try {
+    const offset = parseInt(req.query.offset || "0", 10);
     const result = await pool.query(`
-      SELECT v.*, u.name AS author_name
+      SELECT v.*, u.name AS author_name,
+      (SELECT COUNT(*) FROM comments c WHERE c.video_id = v.id) AS comment_count,
+      (SELECT COUNT(*) FROM likes l WHERE l.video_id = v.id) AS likes_count
       FROM videos v
       JOIN users u ON v.user_handle = u.handle
       ORDER BY v.timestamp DESC
-      LIMIT 20
-    `);
+      LIMIT 20 OFFSET $1
+    `, [offset]);
+
+    let followingSet = new Set();
+    let likedSet = new Set();
+    let savedSet = new Set();
+    if (req.session.user) {
+      const userRes = await pool.query("SELECT handle FROM users WHERE username = $1", [req.session.user]);
+      const handle = userRes.rows[0]?.handle;
+      if (handle) {
+        const followsRes = await pool.query("SELECT following_handle FROM follows WHERE follower_handle = $1", [handle]);
+        followsRes.rows.forEach(r => followingSet.add(r.following_handle));
+        
+        const likesRes = await pool.query("SELECT video_id FROM likes WHERE user_handle = $1", [handle]);
+        likesRes.rows.forEach(r => likedSet.add(r.video_id));
+        
+        const savesRes = await pool.query("SELECT video_id FROM saves WHERE user_handle = $1", [handle]);
+        savesRes.rows.forEach(r => savedSet.add(r.video_id));
+      }
+    }
 
     return res.json({
       success: true,
@@ -178,8 +206,13 @@ app.get("/api/feed", async (_req, res, next) => {
         title: video.title,
         category: video.category,
         url: `/uploads/${video.filename}`,
-        likes: video.likes,
-        views: video.views
+        thumbnail_url: video.thumbnail_filename ? `/uploads/${video.thumbnail_filename}` : "",
+        likes: parseInt(video.likes_count, 10),
+        views: video.views,
+        comment_count: parseInt(video.comment_count, 10),
+        is_followed: followingSet.has(video.user_handle),
+        is_liked: likedSet.has(video.id),
+        is_saved: savedSet.has(video.id)
       }))
     });
   } catch (error) {
@@ -203,6 +236,7 @@ app.get("/api/my_videos", requireLogin, async (req, res, next) => {
         id: video.id,
         title: video.title,
         url: `/uploads/${video.filename}`,
+        thumbnail_url: video.thumbnail_filename ? `/uploads/${video.thumbnail_filename}` : "",
         views: video.views
       }))
     });
@@ -214,7 +248,7 @@ app.get("/api/my_videos", requireLogin, async (req, res, next) => {
 app.get("/api/me", requireLogin, async (req, res, next) => {
   try {
     const result = await pool.query(
-      "SELECT name, handle, streak_count FROM users WHERE username = $1",
+      "SELECT name, handle, streak_count, bio, avatar_url FROM users WHERE username = $1",
       [req.session.user]
     );
     const user = result.rows[0];
@@ -242,10 +276,103 @@ app.get("/api/me", requireLogin, async (req, res, next) => {
       user: {
         name: user.name,
         handle: user.handle,
+        bio: user.bio || "",
+        avatar_url: user.avatar_url || "",
         streak: user.streak_count || 0,
         stats,
         badges
       }
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+app.post("/api/profile", requireLogin, async (req, res, next) => {
+  try {
+    const { name, bio, avatar_url } = req.body;
+    await pool.query(
+      "UPDATE users SET name = COALESCE($1, name), bio = COALESCE($2, bio), avatar_url = COALESCE($3, avatar_url) WHERE username = $4",
+      [name, bio, avatar_url, req.session.user]
+    );
+    return res.json({ success: true });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+app.post("/api/like/:videoId", requireLogin, async (req, res, next) => {
+  try {
+    const { videoId } = req.params;
+    const user = await pool.query("SELECT handle FROM users WHERE username = $1", [req.session.user]);
+    const handle = user.rows[0]?.handle;
+    if (!handle) return res.status(401).json({ success: false });
+
+    const existing = await pool.query("SELECT * FROM likes WHERE user_handle = $1 AND video_id = $2", [handle, videoId]);
+    if (existing.rows.length > 0) {
+      await pool.query("DELETE FROM likes WHERE user_handle = $1 AND video_id = $2", [handle, videoId]);
+      return res.json({ success: true, liked: false });
+    } else {
+      await pool.query("INSERT INTO likes (user_handle, video_id) VALUES ($1, $2)", [handle, videoId]);
+      return res.json({ success: true, liked: true });
+    }
+  } catch (error) {
+    return next(error);
+  }
+});
+
+app.post("/api/view/:videoId", async (req, res, next) => {
+  try {
+    const { videoId } = req.params;
+    await pool.query("UPDATE videos SET views = views + 1 WHERE id = $1", [videoId]);
+    return res.json({ success: true });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+app.post("/api/save/:videoId", requireLogin, async (req, res, next) => {
+  try {
+    const { videoId } = req.params;
+    const user = await pool.query("SELECT handle FROM users WHERE username = $1", [req.session.user]);
+    const handle = user.rows[0]?.handle;
+    if (!handle) return res.status(401).json({ success: false });
+
+    const existing = await pool.query("SELECT * FROM saves WHERE user_handle = $1 AND video_id = $2", [handle, videoId]);
+    if (existing.rows.length > 0) {
+      await pool.query("DELETE FROM saves WHERE user_handle = $1 AND video_id = $2", [handle, videoId]);
+      return res.json({ success: true, saved: false });
+    } else {
+      await pool.query("INSERT INTO saves (user_handle, video_id) VALUES ($1, $2)", [handle, videoId]);
+      return res.json({ success: true, saved: true });
+    }
+  } catch (error) {
+    return next(error);
+  }
+});
+
+app.get("/api/saved_videos", requireLogin, async (req, res, next) => {
+  try {
+    const user = await pool.query("SELECT handle FROM users WHERE username = $1", [req.session.user]);
+    const handle = user.rows[0]?.handle;
+    if (!handle) return res.json({ success: false, videos: [] });
+
+    const videos = await pool.query(`
+      SELECT v.* 
+      FROM videos v 
+      JOIN saves s ON v.id = s.video_id 
+      WHERE s.user_handle = $1 
+      ORDER BY s.video_id DESC
+    `, [handle]);
+    return res.json({
+      success: true,
+      videos: videos.rows.map((video) => ({
+        id: video.id,
+        title: video.title,
+        url: `/uploads/${video.filename}`,
+        thumbnail_url: video.thumbnail_filename ? `/uploads/${video.thumbnail_filename}` : "",
+        views: video.views
+      }))
     });
   } catch (error) {
     return next(error);
@@ -312,6 +439,56 @@ app.post("/api/follow", requireLogin, async (req, res, next) => {
       await pool.query("INSERT INTO follows (follower_handle, following_handle) VALUES ($1, $2)", [myHandle, target_handle]);
       return res.json({ success: true, following: true });
     }
+  } catch (error) {
+    return next(error);
+  }
+});
+
+app.get("/api/search", async (req, res, next) => {
+  try {
+    const query = req.query.q;
+    if (!query) return res.json({ success: true, users: [] });
+    
+    const users = await pool.query(
+      "SELECT name, handle FROM users WHERE name ILIKE $1 OR handle ILIKE $1 LIMIT 10",
+      [`%${query}%`]
+    );
+    return res.json({ success: true, users: users.rows });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+app.get("/api/comments/:videoId", async (req, res, next) => {
+  try {
+    const { videoId } = req.params;
+    const result = await pool.query(`
+      SELECT c.*, u.name AS author_name 
+      FROM comments c 
+      JOIN users u ON c.user_handle = u.handle 
+      WHERE c.video_id = $1 
+      ORDER BY c.timestamp DESC
+    `, [videoId]);
+    return res.json({ success: true, comments: result.rows });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+app.post("/api/comments/:videoId", requireLogin, async (req, res, next) => {
+  try {
+    const { videoId } = req.params;
+    const { content } = req.body;
+    if (!content) return res.status(400).json({ success: false, message: "Content required" });
+    
+    const user = await pool.query("SELECT handle FROM users WHERE username = $1", [req.session.user]);
+    const handle = user.rows[0]?.handle;
+    
+    await pool.query(
+      "INSERT INTO comments (video_id, user_handle, content) VALUES ($1, $2, $3)",
+      [videoId, handle, content]
+    );
+    return res.json({ success: true });
   } catch (error) {
     return next(error);
   }

@@ -56,4 +56,43 @@ export async function initDb() {
       PRIMARY KEY (follower_handle, following_handle)
     )
   `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS comments (
+      id SERIAL PRIMARY KEY,
+      video_id INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+      user_handle TEXT NOT NULL,
+      content TEXT NOT NULL,
+      timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS likes (
+      user_handle TEXT NOT NULL,
+      video_id INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+      PRIMARY KEY (user_handle, video_id)
+    )
+  `);
+
+  try {
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT DEFAULT ''`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT DEFAULT ''`);
+  } catch (err) {
+    console.error("Error altering users table:", err.message);
+  }
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS saves (
+      user_handle TEXT NOT NULL,
+      video_id INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+      PRIMARY KEY (user_handle, video_id)
+    )
+  `);
+
+  try {
+    await pool.query(`ALTER TABLE videos ADD COLUMN IF NOT EXISTS thumbnail_filename TEXT DEFAULT ''`);
+  } catch (err) {
+    console.error("Error altering videos table:", err.message);
+  }
 }
