@@ -21,7 +21,7 @@ const translations = {
     search_placeholder: "Search users, skills, topics...", followers: "Followers", following: "Following",
     videos: "Videos", likes: "Likes", save: "Save", share: "Share", report: "Report", block: "Block",
     comments: "Comments", post_comment: "Add comment...", analytics_title: "Creator Analytics",
-    performance: "Category Performance", close: "Close"
+    performance: "Category Performance", close: "Close", watch_later: "Watch Later"
   },
   hi: { 
     home: "होम", discover: "खोजें", activity: "गतिविधि", profile: "प्रोफ़ाइल", upload: "अपलोड", logout: "लॉग आउट", 
@@ -31,7 +31,7 @@ const translations = {
     search_placeholder: "उपयोगकर्ता, कौशल, विषय खोजें...", followers: "अनुयायी", following: "अनुसरण",
     videos: "वीडियो", likes: "पसंद", save: "सहेजें", share: "साझा करें", report: "रिपोर्ट", block: "ब्लॉक",
     comments: "टिप्पणियाँ", post_comment: "टिप्पणी जोड़ें...", analytics_title: "क्रिएटर एनालिटिक्स",
-    performance: "श्रेणी प्रदर्शन", close: "बंद करें"
+    performance: "श्रेणी प्रदर्शन", close: "बंद करें", watch_later: "बाद में देखें"
   },
   es: { 
     home: "Inicio", discover: "Descubrir", activity: "Actividad", profile: "Perfil", upload: "Subir", logout: "Salir", 
@@ -41,7 +41,7 @@ const translations = {
     search_placeholder: "Buscar usuarios, temas...", followers: "Seguidores", following: "Siguiendo",
     videos: "Videos", likes: "Likes", save: "Guardar", share: "Compartir", report: "Reportar", block: "Bloquear",
     comments: "Comentarios", post_comment: "Añadir comentario...", analytics_title: "Análisis del creador",
-    performance: "Rendimiento por categoría", close: "Cerrar"
+    performance: "Rendimiento por categoría", close: "Cerrar", watch_later: "Ver más tarde"
   }
 };
 
@@ -251,6 +251,7 @@ function Home() {
   const [isMuted, setIsMuted] = useState(true);
   const [doubleTapHeart, setDoubleTapHeart] = useState(null);
   const [saved, setSaved] = useState({});
+  const [watchLater, setWatchLater] = useState({});
   const viewedVideosRef = useRef(new Set());
 
   const loadFeed = (reset = false) => {
@@ -322,6 +323,14 @@ function Home() {
     const data = await res.json();
     if (data.success) {
       setSaved(prev => ({ ...prev, [videoId]: data.saved }));
+    }
+  }
+
+  async function toggleWatchLater(videoId) {
+    const res = await api(`/api/watch_later/${videoId}`, { method: "POST" });
+    const data = await res.json();
+    if (data.success) {
+      setWatchLater(prev => ({ ...prev, [videoId]: data.added }));
     }
   }
 
@@ -453,15 +462,16 @@ function Home() {
             <div className="video-overlay-top"></div>
             <div className="video-overlay-bottom"></div>
             
-            <div style={{position: 'absolute', bottom: 0, left: 0, right: 0, height: '4px', background: 'rgba(255,255,255,0.2)', zIndex: 5}}>
+            <div style={{position: 'absolute', bottom: 0, left: 0, right: 0, height: '4px', background: 'rgba(255,255,255,0.2)', zIndex: 5}>
               <div id={`progress-${video.id}`} style={{height: '100%', background: '#4facfe', width: '0%', transition: 'width 0.1s linear'}}></div>
             </div>
 
             <aside className="action-sidebar">
               <button className={`action-btn ${liked[video.id] ? "liked" : ""}`} onClick={() => toggleLike(video.id)}><i className="fa-solid fa-heart"></i><span>{video.likes}</span></button>
               <button className="action-btn" onClick={() => openComments(video.id)}><i className="fa-solid fa-comment-dots"></i><span>{video.comment_count || 0}</span></button>
-              <button className={`action-btn ${saved[video.id] ? "liked" : ""}`} style={{color: saved[video.id] ? '#f1c40f' : 'white'}} onClick={() => toggleSave(video.id)}><i className="fa-solid fa-bookmark"></i><span>Save</span></button>
-              <button className="action-btn" onClick={() => handleShare(video)}><i className="fa-solid fa-share"></i><span>Share</span></button>
+              <button className={`action-btn ${watchLater[video.id] ? "liked" : ""}`} style={{color: watchLater[video.id] ? '#00f2fe' : 'white'}} onClick={() => toggleWatchLater(video.id)}><i className="fa-solid fa-clock"></i><span>{translations[localStorage.getItem("lang") || "en"].watch_later}</span></button>
+              <button className={`action-btn ${saved[video.id] ? "liked" : ""}`} style={{color: saved[video.id] ? '#f1c40f' : 'white'}} onClick={() => toggleSave(video.id)}><i className="fa-solid fa-bookmark"></i><span>{translations[localStorage.getItem("lang") || "en"].save}</span></button>
+              <button className="action-btn" onClick={() => handleShare(video)}><i className="fa-solid fa-share"></i><span>{translations[localStorage.getItem("lang") || "en"].share}</span></button>
               
               <div style={{position: 'relative'}}>
                 <button className="action-btn" onClick={() => setMenuOpen(video.id === menuOpen ? null : video.id)}><i className="fa-solid fa-ellipsis-vertical"></i></button>
@@ -776,6 +786,7 @@ function Profile() {
   const [user, setUser] = useState(null);
   const [videos, setVideos] = useState([]);
   const [savedVideos, setSavedVideos] = useState([]);
+  const [watchLaterVideos, setWatchLaterVideos] = useState([]);
   const [activeTab, setActiveTab] = useState(0);
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState({ name: "", bio: "", avatar_url: "", banner_url: "" });
@@ -806,6 +817,15 @@ function Profile() {
     api("/api/saved_videos").then((res) => res.json()).then((data) => {
       if (data.success) {
         setSavedVideos(data.videos.map(video => ({
+          ...video,
+          url: video.url.startsWith("http") ? video.url : (window.CONFIG?.API_URL || "") + video.url,
+          thumbnail_url: video.thumbnail_url ? (video.thumbnail_url.startsWith("http") ? video.thumbnail_url : (window.CONFIG?.API_URL || "") + video.thumbnail_url) : ""
+        })));
+      }
+    });
+    api("/api/watch_later").then((res) => res.json()).then((data) => {
+      if (data.success) {
+        setWatchLaterVideos(data.videos.map(video => ({
           ...video,
           url: video.url.startsWith("http") ? video.url : (window.CONFIG?.API_URL || "") + video.url,
           thumbnail_url: video.thumbnail_url ? (video.thumbnail_url.startsWith("http") ? video.thumbnail_url : (window.CONFIG?.API_URL || "") + video.thumbnail_url) : ""
@@ -849,7 +869,7 @@ function Profile() {
   const avatarImage = current.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(current.name)}&background=4FACFE&color=fff`;
   const isExpert = current.badges.some(b => b.name === "Verified Expert");
 
-  const displayVideos = activeTab === 0 ? videos : (activeTab === 2 ? savedVideos : []);
+  const displayVideos = activeTab === 0 ? videos : (activeTab === 2 ? savedVideos : (activeTab === 3 ? watchLaterVideos : []));
 
   return (
     <Shell title="Profile" active="profile">
@@ -895,7 +915,13 @@ function Profile() {
         </>
       )}
       <section className="gamification-section"><div className="streak-card"><i className="fa-solid fa-fire"></i><div><strong>{current.streak} Days</strong><span>Learning Streak!</span></div></div><div className="badges-card"><span>Earned Badges</span><div className="badge-icons">{current.badges.map((badge) => <i key={badge.name} className={badge.icon} title={badge.name}></i>)}</div></div></section>
-      <div className="tabs">{["fa-solid fa-border-all", "fa-solid fa-list-ul", "fa-solid fa-bookmark", "fa-solid fa-heart"].map((icon, index) => <div className={`tab ${index === activeTab ? "active" : ""}`} key={icon} onClick={() => setActiveTab(index)}><i className={icon}></i></div>)}</div>
+      <div className="tabs">
+        {["fa-solid fa-border-all", "fa-solid fa-list-ul", "fa-solid fa-bookmark", "fa-solid fa-clock", "fa-solid fa-heart"].map((icon, index) => (
+          <div className={`tab ${index === activeTab ? "active" : ""}`} key={icon} onClick={() => setActiveTab(index)}>
+            <i className={icon}></i>
+          </div>
+        ))}
+      </div>
       {activeTab === 1 && (
         <div style={{padding: '0 20px', marginBottom: '20px'}}>
            <button className="btn-primary compact" style={{width: '100%', background: 'rgba(255,255,255,0.1)'}} onClick={() => {
@@ -904,7 +930,7 @@ function Profile() {
            }}>+ Create New Skill Path</button>
         </div>
       )}
-      <div className="video-grid">{displayVideos.length ? displayVideos.map((video) => <div className="grid-item" key={video.id}>{video.thumbnail_url ? <img src={video.thumbnail_url} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt=""/> : <video src={video.url} muted loop preload="metadata" onLoadedData={(e) => { e.target.currentTime = 1; }}></video>}<div className="views"><i className="fa-solid fa-play"></i> {video.views}</div></div>) : <Empty icon={activeTab === 2 ? "fa-solid fa-bookmark" : (activeTab === 1 ? "fa-solid fa-list-ul" : "fa-solid fa-camera")} text={activeTab === 2 ? "No saved videos yet." : (activeTab === 1 ? "No skill paths created." : "No videos uploaded yet.")} />}</div>
+      <div className="video-grid">{displayVideos.length ? displayVideos.map((video) => <div className="grid-item" key={video.id}>{video.thumbnail_url ? <img src={video.thumbnail_url} style={{width: '100%', height: '100%', objectFit: 'cover'}} alt=""/> : <video src={video.url} muted loop preload="metadata" onLoadedData={(e) => { e.target.currentTime = 1; }}></video>}<div className="views"><i className="fa-solid fa-play"></i> {video.views}</div></div>) : <Empty icon={activeTab === 3 ? "fa-solid fa-clock" : (activeTab === 2 ? "fa-solid fa-bookmark" : (activeTab === 1 ? "fa-solid fa-list-ul" : "fa-solid fa-camera"))} text={activeTab === 3 ? "No videos in Watch Later." : (activeTab === 2 ? "No saved videos yet." : (activeTab === 1 ? "No skill paths created." : "No videos uploaded yet."))} />}</div>
       {feedbackModal && (
         <div className="modal-overlay" style={{zIndex: 2000}}>
           <div className="glass-card modal-content" style={{maxWidth: '400px', width: '90%'}}>

@@ -132,6 +132,14 @@ export async function initDb() {
     )
   `);
 
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS watch_later (
+      user_handle TEXT NOT NULL,
+      video_id INTEGER NOT NULL REFERENCES videos(id) ON DELETE CASCADE,
+      PRIMARY KEY (user_handle, video_id)
+    )
+  `);
+
   try {
     await pool.query(`ALTER TABLE videos ADD COLUMN IF NOT EXISTS thumbnail_filename TEXT DEFAULT ''`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_videos_handle ON videos(user_handle)`);

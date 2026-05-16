@@ -407,6 +407,42 @@ app.post("/api/view/:videoId", async (req, res, next) => {
   }
 });
 
+app.post("/api/watch_later/:videoId", requireLogin, async (req, res, next) => {
+  try {
+    const { videoId } = req.params;
+    const user = await pool.query("SELECT handle FROM users WHERE username = $1", [req.session.user]);
+    const handle = user.rows[0]?.handle;
+    if (!handle) return res.status(401).json({ success: false });
+
+    const existing = await pool.query("SELECT * FROM watch_later WHERE user_handle = $1 AND video_id = $2", [handle, videoId]);
+    if (existing.rows.length > 0) {
+      await pool.query("DELETE FROM watch_later WHERE user_handle = $1 AND video_id = $2", [handle, videoId]);
+      return res.json({ success: true, added: false });
+    } else {
+      await pool.query("INSERT INTO watch_later (user_handle, video_id) VALUES ($1, $2)", [handle, videoId]);
+      return res.json({ success: true, added: true });
+    }
+  } catch (error) {
+    return next(error);
+  }
+});
+
+app.get("/api/watch_later", requireLogin, async (req, res, next) => {
+  try {
+    const user = await pool.query("SELECT handle FROM users WHERE username = $1", [req.session.user]);
+    const handle = user.rows[0]?.handle;
+    const result = await pool.query(`
+      SELECT v.* FROM videos v
+      JOIN watch_later w ON v.id = w.video_id
+      WHERE w.user_handle = $1
+      ORDER BY v.timestamp DESC
+    `, [handle]);
+    return res.json({ success: true, videos: result.rows });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 app.post("/api/save/:videoId", requireLogin, async (req, res, next) => {
   try {
     const { videoId } = req.params;
