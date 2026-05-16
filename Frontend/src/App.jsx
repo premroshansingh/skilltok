@@ -150,6 +150,8 @@ function AuthShell({ children }) {
 }
 
 function Login() {
+  const lang = localStorage.getItem("lang") || "en";
+  const t = translations[lang];
   const [form, setForm] = useState({ username: "", password: "" });
   const [error, setError] = useState("");
 
@@ -185,6 +187,8 @@ function Login() {
 }
 
 function Signup() {
+  const lang = localStorage.getItem("lang") || "en";
+  const t = translations[lang];
   const [step, setStep] = useState(1);
   const [error, setError] = useState("");
   const [form, setForm] = useState({ name: "", username: "", password: "", categories: [] });
@@ -206,8 +210,8 @@ function Signup() {
   return (
     <AuthShell>
       <section className="login-box">
-        <h2>Create Account</h2>
-        <p>Join the community and start learning</p>
+        <h2>{t.signup_title}</h2>
+        <p>{t.signup_subtitle}</p>
         {step === 1 ? (
           <form onSubmit={(event) => { event.preventDefault(); setStep(2); }}>
             <Field label="Full Name" value={form.name} placeholder="e.g. John Doe" onChange={(name) => setForm({ ...form, name })} />
@@ -619,8 +623,11 @@ function Discover() {
   const urlParams = new URLSearchParams(window.location.search);
   const [query, setQuery] = useState(urlParams.get("q") || "");
   const [results, setResults] = useState([]);
+  const [hashtags, setHashtags] = useState([]);
   const [followed, setFollowed] = useState({});
   const [leaderboard, setLeaderboard] = useState([]);
+  const lang = localStorage.getItem("lang") || "en";
+  const t = translations[lang];
 
   useEffect(() => {
     api("/api/leaderboard").then(res => res.json()).then(data => {
@@ -632,9 +639,15 @@ function Discover() {
     if (query.trim().length > 0) {
       api(`/api/search?q=${encodeURIComponent(query)}`)
         .then(res => res.json())
-        .then(data => { if (data.success) setResults(data.users); });
+        .then(data => { 
+          if (data.success) {
+            setResults(data.users);
+            setHashtags(data.hashtags || []);
+          }
+        });
     } else {
       setResults([]);
+      setHashtags([]);
     }
   }, [query]);
 
@@ -666,6 +679,11 @@ function Discover() {
       {query.length > 0 && (
         <div className="glass-card" style={{marginBottom: '20px'}}>
           <h3 style={{marginBottom: '10px', fontSize: '1rem'}}>Search Results</h3>
+          {hashtags.length > 0 && (
+            <div style={{display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '15px'}}>
+              {hashtags.map(h => <div key={h.title} className="category-chip active" style={{cursor: 'pointer'}} onClick={() => go(`/hashtag?tag=${encodeURIComponent(h.title.split('#')[1])}`)}>{h.title}</div>)}
+            </div>
+          )}
           {results.length ? results.map((user) => (
             <div className="search-result-item" key={user.handle} style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.05)'}}>
               <div style={{display: 'flex', gap: '12px', alignItems: 'center'}}>
@@ -685,7 +703,7 @@ function Discover() {
                 </button>
               )}
             </div>
-          )) : <div style={{fontSize: '0.9rem', color: 'rgba(255,255,255,0.7)', padding: '10px 0'}}>No users found matching "{query}"</div>}
+          )) : (!hashtags.length && <div style={{fontSize: '0.9rem', color: 'rgba(255,255,255,0.7)', padding: '10px 0'}}>No results found matching "{query}"</div>)}
         </div>
       )}
 
