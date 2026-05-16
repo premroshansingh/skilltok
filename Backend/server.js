@@ -142,6 +142,18 @@ app.post("/api/signup", async (req, res, next) => {
   }
 });
 
+app.post("/api/admin/set_admin", requireLogin, async (req, res, next) => {
+  try {
+    const { handle } = req.body;
+    const user = await pool.query("SELECT is_admin FROM users WHERE username = $1", [req.session.user]);
+    if (req.session.user !== "admin" && !user.rows[0]?.is_admin) return res.status(403).json({ success: false });
+    await pool.query("UPDATE users SET is_admin = TRUE WHERE handle = $1", [handle]);
+    return res.json({ success: true });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 async function createNotification(userHandle, actorHandle, type, videoId = null) {
   if (userHandle === actorHandle) return;
   await pool.query(
@@ -687,10 +699,91 @@ app.get("/api/search", async (req, res, next) => {
     if (!query) return res.json({ success: true, users: [] });
     
     const users = await pool.query(
-      "SELECT name, handle FROM users WHERE name ILIKE $1 OR handle ILIKE $1 LIMIT 10",
+      "SELECT name, handle, avatar_url FROM users WHERE name ILIKE $1 OR handle ILIKE $1 LIMIT 10",
       [`%${query}%`]
     );
-    return res.json({ success: true, users: users.rows });
+    const hashtags = await pool.query(
+      "SELECT DISTINCT title FROM videos WHERE title ILIKE $1 LIMIT 5",
+      [`%#${query}%`]
+    );
+    return res.json({ success: true, users: users.rows, hashtags: hashtags.rows });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+app.get("/api/hashtags/:tag", async (req, res, next) => {
+  try {
+    const { tag } = req.params;
+    const result = await pool.query(`
+      SELECT v.*, u.name AS author_name, u.avatar_url AS author_avatar
+      FROM videos v
+      JOIN users u ON v.user_handle = u.handle
+      WHERE v.title ILIKE $1
+      ORDER BY v.timestamp DESC
+    `, [`%#${tag}%`]);
+    return res.json({ success: true, videos: result.rows });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+app.get("/api/conversations", requireLogin, async (req, res, next) => {
+  try {
+    const user = await pool.query("SELECT handle FROM users WHERE username = $1", [req.session.user]);
+    const handle = user.rows[0]?.handle;
+    const result = await pool.query(`
+      SELECT DISTINCT ON (other_handle) 
+        u.name, u.handle, u.avatar_url, m.content, m.timestamp
+      FROM (
+        SELECT sender_handle AS other_handle, content, timestamp FROM messages WHERE receiver_handle = $1
+        UNION ALL
+        SELECT receiver_handle AS other_handle, content, timestamp FROM messages WHERE sender_handle = $1
+      ) m
+      JOIN users u ON m.other_handle = u.handle
+      ORDER BY other_handle, m.timestamp DESC
+    `, [handle]);
+    return res.json({ success: true, conversations: result.rows });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+app.get("/api/admin/stats", requireLogin, async (req, res, next) => {
+  try {
+    const user = await pool.query("SELECT is_admin FROM users WHERE username = $1", [req.session.user]);
+    if (!user.rows[0]?.is_admin && req.session.user !== "admin") return res.status(403).json({ success: false });
+    
+    const stats = await pool.query(`
+      SELECT 
+        (SELECT COUNT(*) FROM users) as total_users,
+        (SELECT COUNT(*) FROM videos) as total_videos,
+        (SELECT COUNT(*) FROM feedback) as total_feedback,
+        (SELECT COUNT(*) FROM notifications WHERE type = 'report') as total_reports
+    `);
+    return res.json({ success: true, stats: stats.rows[0] });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+app.get("/api/admin/videos", requireLogin, async (req, res, next) => {
+  try {
+    const user = await pool.query("SELECT is_admin FROM users WHERE username = $1", [req.session.user]);
+    if (!user.rows[0]?.is_admin && req.session.user !== "admin") return res.status(403).json({ success: false });
+    const result = await pool.query("SELECT v.*, u.name as author_name FROM videos v JOIN users u ON v.user_handle = u.handle ORDER BY v.timestamp DESC LIMIT 100");
+    return res.json({ success: true, videos: result.rows });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+app.delete("/api/admin/video/:id", requireLogin, async (req, res, next) => {
+  try {
+    const user = await pool.query("SELECT is_admin FROM users WHERE username = $1", [req.session.user]);
+    if (!user.rows[0]?.is_admin && req.session.user !== "admin") return res.status(403).json({ success: false });
+    await pool.query("DELETE FROM videos WHERE id = $1", [req.params.id]);
+    return res.json({ success: true });
   } catch (error) {
     return next(error);
   }

@@ -78,12 +78,17 @@ function go(path) {
 
 function useRoute() {
   const [path, setPath] = useState(window.location.pathname);
+  const [params, setParams] = useState(new URLSearchParams(window.location.search));
+  
   useEffect(() => {
-    const update = () => setPath(window.location.pathname);
+    const update = () => {
+      setPath(window.location.pathname);
+      setParams(new URLSearchParams(window.location.search));
+    };
     window.addEventListener("popstate", update);
     return () => window.removeEventListener("popstate", update);
   }, []);
-  return path;
+  return { path, params };
 }
 
 function BottomNav({ active }) {
@@ -503,7 +508,7 @@ function Home() {
                 )}
               </h2>
               <p className="video-desc">
-                {video.title.split(/(\s+)/).map((word, i) => word.startsWith('#') ? <span key={i} style={{color: '#4facfe', cursor: 'pointer', fontWeight: 'bold'}} onClick={() => go('/discover?q=' + encodeURIComponent(word.slice(1)))}>{word}</span> : word)}
+                {video.title.split(/(\s+)/).map((word, i) => word.startsWith('#') ? <span key={i} style={{color: '#4facfe', cursor: 'pointer', fontWeight: 'bold'}} onClick={() => go(`/hashtag?tag=${encodeURIComponent(word.slice(1))}`)}>{word}</span> : word)}
               </p>
               <div className="music-ticker"><i className="fa-solid fa-music"></i><span>Original Audio - {video.author_name}</span></div>
             </div>
@@ -782,6 +787,166 @@ function Upload() {
   );
 }
 
+function AdminDashboard() {
+  const [stats, setStats] = useState(null);
+  const [videos, setVideos] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([
+      api("/api/admin/stats").then(res => res.json()),
+      api("/api/admin/videos").then(res => res.json())
+    ]).then(([sData, vData]) => {
+      if (sData.success) setStats(sData.stats);
+      if (vData.success) setVideos(vData.videos);
+      setLoading(false);
+    });
+  }, []);
+
+  async function deleteVideo(id) {
+    if (!window.confirm("Delete this video permanently?")) return;
+    const res = await api(`/api/admin/video/${id}`, { method: "DELETE" });
+    if ((await res.json()).success) {
+      setVideos(prev => prev.filter(v => v.id !== id));
+    }
+  }
+
+  if (loading) return <Shell title="Admin" back><div style={{textAlign: 'center', marginTop: '50px'}}><i className="fa-solid fa-spinner fa-spin"></i></div></Shell>;
+
+  return (
+    <Shell title="Admin Panel" back>
+      <div className="stats-row" style={{marginBottom: '20px'}}>
+        <div className="stat-box"><strong>{stats?.total_users}</strong><span>Users</span></div>
+        <div className="stat-box"><strong>{stats?.total_videos}</strong><span>Videos</span></div>
+        <div className="stat-box"><strong>{stats?.total_feedback}</strong><span>Feedback</span></div>
+      </div>
+      <h2 className="section-title">Manage Content</h2>
+      <div className="admin-list" style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
+        {videos.map(v => (
+          <div key={v.id} className="glass-card" style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px'}}>
+            <div style={{display: 'flex', gap: '10px', alignItems: 'center'}}>
+              <div style={{width: 40, height: 40, background: '#333', borderRadius: '5px', overflow: 'hidden'}}><video src={v.filename} muted style={{width: '100%', height: '100%', objectFit: 'cover'}} /></div>
+              <div>
+                <div style={{fontWeight: 'bold', fontSize: '0.85rem'}}>{v.title.slice(0, 30)}...</div>
+                <div style={{fontSize: '0.7rem', color: 'rgba(255,255,255,0.5)'}}>by {v.author_name} • {v.views} views</div>
+              </div>
+            </div>
+            <button className="btn-primary compact" style={{background: '#ff0844'}} onClick={() => deleteVideo(v.id)}><i className="fa-solid fa-trash"></i></button>
+          </div>
+        ))}
+      </div>
+    </Shell>
+  );
+}
+
+function HashtagFeed() {
+  const { params } = useRoute();
+  const tag = params.get("tag");
+  const [videos, setVideos] = useState([]);
+
+  useEffect(() => {
+    if (tag) {
+      api(`/api/hashtags/${tag}`).then(res => res.json()).then(data => {
+        if (data.success) setVideos(data.videos);
+      });
+    }
+  }, [tag]);
+
+  return (
+    <Shell title={`#${tag}`} back>
+      <div className="video-grid">
+        {videos.map(v => (
+          <div className="grid-item" key={v.id} onClick={() => go("/")}>
+            <video src={v.filename} muted onLoadedData={e => e.target.currentTime = 1} style={{width: '100%', height: '100%', objectFit: 'cover'}} />
+            <div className="views"><i className="fa-solid fa-play"></i> {v.views}</div>
+          </div>
+        ))}
+      </div>
+    </Shell>
+  );
+}
+
+function Conversations() {
+  const [chats, setChats] = useState([]);
+  
+  useEffect(() => {
+    api("/api/conversations").then(res => res.json()).then(data => {
+      if (data.success) setChats(data.conversations);
+    });
+  }, []);
+
+  return (
+    <Shell title="Messages" active="activity" back>
+      <div className="notif-list">
+        {chats.map(c => (
+          <div key={c.handle} className="notification-item" onClick={() => go(`/chat?handle=${c.handle}`)}>
+            <img src={c.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(c.name)}&background=random&color=fff`} className="notif-avatar" />
+            <div className="notif-content">
+              <strong>{c.name}</strong>
+              <div style={{fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)'}}>{c.content}</div>
+            </div>
+          </div>
+        ))}
+        {!chats.length && <Empty icon="fa-solid fa-message" text="No conversations yet." />}
+      </div>
+    </Shell>
+  );
+}
+
+function DirectChat() {
+  const { params } = useRoute();
+  const targetHandle = params.get("handle");
+  const [messages, setMessages] = useState([]);
+  const [text, setText] = useState("");
+  const socket = getSocket();
+  const myHandle = localStorage.getItem("userHandle");
+
+  useEffect(() => {
+    api("/api/messages").then(res => res.json()).then(data => {
+      if (data.success) {
+        setMessages(data.messages.filter(m => m.sender_handle === targetHandle || m.receiver_handle === targetHandle));
+      }
+    });
+
+    const handleNew = (msg) => {
+      if (msg.sender_handle === targetHandle || msg.receiver_handle === targetHandle) {
+        setMessages(prev => [msg, ...prev]);
+      }
+    };
+    socket.on("new_message", handleNew);
+    return () => socket.off("new_message", handleNew);
+  }, [targetHandle]);
+
+  async function send(e) {
+    e.preventDefault();
+    if (!text.trim()) return;
+    const res = await api("/api/messages/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ receiver_handle: targetHandle, content: text })
+    });
+    if ((await res.json()).success) setText("");
+  }
+
+  return (
+    <Shell title={targetHandle} back>
+      <div className="chat-area" style={{display: 'flex', flexDirection: 'column-reverse', height: '100%', paddingBottom: '70px'}}>
+        <div style={{display: 'flex', flexDirection: 'column-reverse', gap: '10px', padding: '15px'}}>
+          {messages.map((m, i) => (
+            <div key={i} style={{alignSelf: m.sender_handle === myHandle ? 'flex-end' : 'flex-start', background: m.sender_handle === myHandle ? '#4facfe' : 'rgba(255,255,255,0.1)', padding: '10px 15px', borderRadius: '15px', maxWidth: '80%'}}>
+              {m.content}
+            </div>
+          ))}
+        </div>
+        <form onSubmit={send} className="chat-input-row" style={{position: 'fixed', bottom: '15px', left: '15px', right: '15px'}}>
+          <input className="form-control" placeholder="Type a message..." value={text} onChange={e => setText(e.target.value)} />
+          <button className="icon-btn" style={{background: '#4facfe'}}><i className="fa-solid fa-paper-plane"></i></button>
+        </form>
+      </div>
+    </Shell>
+  );
+}
+
 function Profile() {
   const [user, setUser] = useState(null);
   const [videos, setVideos] = useState([]);
@@ -908,6 +1073,12 @@ function Profile() {
               <option value="hi">हिंदी</option>
               <option value="es">Español</option>
             </select>
+            <button className="btn-primary compact" style={{background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white'}} onClick={() => {
+              const url = window.location.href;
+              const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(url)}`;
+              alert(`Scan this QR code to visit this profile:\n${qrUrl}`);
+              window.open(qrUrl, "_blank");
+            }}><i className="fa-solid fa-qrcode"></i></button>
             <button className="btn-logout" onClick={logout} style={{margin: 0, padding: '5px 15px'}}><i className="fa-solid fa-right-from-bracket"></i></button>
           </div>
           <div className="stats-row">{["videos", "followers", "following", "likes"].map((key) => <div className="stat-box" key={key}><div className="stat-num">{current.stats[key]}</div><div className="stat-label">{key[0].toUpperCase() + key.slice(1)}</div></div>)}</div>
@@ -1018,7 +1189,7 @@ function Empty({ icon, text }) {
 }
 
 export default function App() {
-  const path = useRoute();
+  const { path } = useRoute();
 
   useEffect(() => {
     if (path === "/login" || path === "/signup") return;
@@ -1032,6 +1203,11 @@ export default function App() {
   if (path === "/discover") return <Discover />;
   if (path === "/upload") return <Upload />;
   if (path === "/profile") return <Profile />;
-  if (path === "/inbox") return <Inbox />;
+  if (path === "/activity") return <Activity />;
+  if (path === "/studyroom") return <StudyRoom />;
+  if (path === "/admin") return <AdminDashboard />;
+  if (path === "/hashtag") return <HashtagFeed />;
+  if (path === "/messages") return <Conversations />;
+  if (path === "/chat") return <DirectChat />;
   return <Home />;
 }
