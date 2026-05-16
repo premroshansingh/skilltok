@@ -1,0 +1,21 @@
+{
+  "short_name": "SkillTok",
+  "name": "SkillTok - Learn Skills via Video",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#09090b",
+  "display": "standalone",
+  "theme_color": "#4facfe",
+  "description": "The best platform to learn and share skills through short videos."
+}

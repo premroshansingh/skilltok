@@ -157,9 +157,17 @@ app.post("/api/logout", (req, res) => {
   });
 });
 
+function moderateContent(text) {
+  const banned = ["spam", "fake", "badword1", "badword2"]; 
+  const lower = text.toLowerCase();
+  return banned.some(word => lower.includes(word));
+}
+
 app.post("/api/upload", requireLogin, upload.single("video"), async (req, res, next) => {
   try {
+    const { title, category } = req.body;
     if (!req.file) return res.status(400).json({ success: false, message: "No video file provided" });
+    if (moderateContent(title || "")) return res.status(400).json({ success: false, message: "Content violates standards" });
 
     const user = await pool.query("SELECT handle FROM users WHERE username = $1", [req.session.user]);
     const handle = user.rows[0]?.handle || "@unknown";

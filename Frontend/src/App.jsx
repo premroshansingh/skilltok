@@ -12,6 +12,12 @@ function LogoIcon() {
   );
 }
 
+const translations = {
+  en: { home: "Home", discover: "Discover", activity: "Activity", profile: "Profile", upload: "Upload", logout: "Log Out", edit: "Edit Profile", stats: "Stats", feedback: "Feedback", skillpaths: "Skill Paths", createpath: "Create Path" },
+  hi: { home: "होम", discover: "खोजें", activity: "गतिविधि", profile: "प्रोफ़ाइल", upload: "अपलोड", logout: "लॉग आउट", edit: "प्रोफ़ाइल संपादित करें", stats: "आंकड़े", feedback: "प्रतिक्रिया", skillpaths: "कौशल पथ", createpath: "पथ बनाएं" },
+  es: { home: "Inicio", discover: "Descubrir", activity: "Actividad", profile: "Perfil", upload: "Subir", logout: "Cerrar sesión", edit: "Editar perfil", stats: "Estadísticas", feedback: "Comentarios", skillpaths: "Rutas de habilidades", createpath: "Crear ruta" }
+};
+
 const navItems = [
   ["/", "home", "fa-solid fa-house", "Home"],
   ["/discover", "discover", "fa-solid fa-compass", "Discover"],
@@ -54,18 +60,26 @@ function useRoute() {
 }
 
 function BottomNav({ active }) {
+  const lang = localStorage.getItem("lang") || "en";
+  const t = translations[lang];
+
   return (
     <nav className="bottom-nav">
-      <button className={`nav-item ${active === "home" ? "active" : ""}`} onClick={() => go("/")}><i className="fa-solid fa-house"></i><span>Home</span></button>
-      <button className={`nav-item ${active === "discover" ? "active" : ""}`} onClick={() => go("/discover")}><i className="fa-solid fa-magnifying-glass"></i><span>Discover</span></button>
+      <button className={`nav-item ${active === "home" ? "active" : ""}`} onClick={() => go("/")}><i className="fa-solid fa-house"></i><span>{t.home}</span></button>
+      <button className={`nav-item ${active === "discover" ? "active" : ""}`} onClick={() => go("/discover")}><i className="fa-solid fa-magnifying-glass"></i><span>{t.discover}</span></button>
       <button className="nav-item upload-btn" onClick={() => go("/upload")}><i className="fa-solid fa-plus"></i></button>
-      <button className={`nav-item ${active === "activity" ? "active" : ""}`} onClick={() => go("/activity")} style={{position: 'relative'}}><i className="fa-solid fa-bell"></i><span>Activity</span></button>
-      <button className={`nav-item ${active === "profile" ? "active" : ""}`} onClick={() => go("/profile")}><i className="fa-solid fa-user"></i><span>Profile</span></button>
+      <button className={`nav-item ${active === "activity" ? "active" : ""}`} onClick={() => go("/activity")} style={{position: 'relative'}}><i className="fa-solid fa-bell"></i><span>{t.activity}</span></button>
+      <button className={`nav-item ${active === "profile" ? "active" : ""}`} onClick={() => go("/profile")}><i className="fa-solid fa-user"></i><span>{t.profile}</span></button>
     </nav>
   );
 }
 
 function Shell({ title, active, children, right, back }) {
+  useEffect(() => {
+    const theme = localStorage.getItem("theme") || "default";
+    document.documentElement.setAttribute("data-theme", theme);
+  }, []);
+
   return (
     <div className="app-container">
       <header className="page-header split">
@@ -834,10 +848,19 @@ function Profile() {
           </h2>
           <p className="profile-handle" style={{color: '#4facfe', fontWeight: 'bold'}}>{current.handle} • {current.points} SkillPoints</p>
           {current.bio && <p style={{fontSize: '0.9rem', marginBottom: '15px', color: 'var(--text-secondary)', padding: '0 20px'}}>{current.bio}</p>}
-          <div style={{display: 'flex', gap: '10px', justifyContent: 'center', marginBottom: '20px'}}>
-            <button className="btn-primary compact" style={{background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', color: 'white', margin: 0}} onClick={() => setIsEditing(true)}>Edit Profile</button>
-            <button className="btn-primary compact" style={{background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', margin: 0}} onClick={() => setShowAnalytics(true)}><i className="fa-solid fa-chart-line"></i> Stats</button>
-            <button className="btn-primary compact" style={{background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', margin: 0}} onClick={() => setFeedbackModal(true)}><i className="fa-solid fa-comment-dots"></i></button>
+          <div style={{display: 'flex', gap: '10px', justifyContent: 'center', marginBottom: '20px', flexWrap: 'wrap'}}>
+            <button className="btn-primary compact" style={{background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', color: 'white', margin: 0}} onClick={() => setIsEditing(true)}>Edit</button>
+            <button className="btn-primary compact" style={{background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', margin: 0}} onClick={() => setShowAnalytics(true)}><i className="fa-solid fa-chart-line"></i></button>
+            <select className="btn-primary compact" style={{background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', fontSize: '0.7rem', width: 'auto'}} value={localStorage.getItem("theme") || "default"} onChange={e => { localStorage.setItem("theme", e.target.value); window.location.reload(); }}>
+              <option value="default">Default</option>
+              <option value="oled">OLED Black</option>
+              <option value="neon">Neon Cyber</option>
+            </select>
+            <select className="btn-primary compact" style={{background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', fontSize: '0.7rem', width: 'auto'}} value={localStorage.getItem("lang") || "en"} onChange={e => { localStorage.setItem("lang", e.target.value); window.location.reload(); }}>
+              <option value="en">English</option>
+              <option value="hi">हिंदी</option>
+              <option value="es">Español</option>
+            </select>
             <button className="btn-logout" onClick={logout} style={{margin: 0, padding: '5px 15px'}}><i className="fa-solid fa-right-from-bracket"></i></button>
           </div>
           <div className="stats-row">{["videos", "followers", "following", "likes"].map((key) => <div className="stat-box" key={key}><div className="stat-num">{current.stats[key]}</div><div className="stat-label">{key[0].toUpperCase() + key.slice(1)}</div></div>)}</div>

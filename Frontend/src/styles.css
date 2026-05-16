@@ -14,6 +14,26 @@
   --glow-accent: rgba(255, 8, 68, 0.4);
 }
 
+[data-theme="oled"] {
+  --bg-dark: #000000;
+  --bg-darker: #000000;
+  --surface-glass: #000000;
+  --glass-border: #333333;
+  --primary-color: #ffffff;
+  --secondary-color: #cccccc;
+  --glow-primary: rgba(255, 255, 255, 0.2);
+}
+
+[data-theme="neon"] {
+  --primary-color: #ff00ff;
+  --secondary-color: #00ffff;
+  --accent-color: #ffff00;
+  --bg-dark: #0d0221;
+  --bg-darker: #05010a;
+  --glow-primary: rgba(255, 0, 255, 0.6);
+  --glow-accent: rgba(0, 255, 255, 0.6);
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
