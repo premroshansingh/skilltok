@@ -251,20 +251,24 @@ function Home() {
     const observer = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
         if (entry.isIntersecting) {
-           entry.target.play().catch(() => {});
-           if (entry.target.id === `video-${videos.length - 1}` && hasMore) {
+          if (entry.target.tagName === "VIDEO") {
+            entry.target.play().catch(() => {});
+          } else if (entry.target.id === "load-more-sentinel" && hasMore) {
              loadFeed();
-           }
-        }
-        else {
+          }
+        } else if (entry.target.tagName === "VIDEO") {
           entry.target.pause();
           entry.target.currentTime = 0;
         }
       });
-    }, { threshold: 0.6 });
-    document.querySelectorAll("video").forEach((video) => observer.observe(video));
+    }, { threshold: 0.5 });
+    
+    document.querySelectorAll("video").forEach((v) => observer.observe(v));
+    const sentinel = document.getElementById("load-more-sentinel");
+    if (sentinel) observer.observe(sentinel);
+    
     return () => observer.disconnect();
-  }, [videos, hasMore, offset]);
+  }, [videos, hasMore]);
 
   async function toggleLike(videoId) {
     const res = await api(`/api/like/${videoId}`, { method: "POST" });
@@ -381,7 +385,7 @@ function Home() {
         {feed.filter(v => !blockedUsers.has(v.handle)).map((video) => (
           <section className="video-container" key={video.id}>
             <video 
-              id={`video-${feed.indexOf(video)}`}
+              id={`video-${video.id}`}
               src={video.url} 
               loop 
               playsInline 
@@ -432,7 +436,7 @@ function Home() {
               </div>
 
               <div className="profile-pic" onClick={() => follow(video.handle)}>
-                <img src={`https://ui-avatars.com/api/?name=${encodeURIComponent(video.author_name)}&background=random&color=fff`} alt="" />
+                <img src={video.author_avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(video.author_name)}&background=random&color=fff`} alt="" />
                 {!followed[video.handle] ? <div className="follow-badge"><i className="fa-solid fa-plus"></i></div> : <div className="follow-badge" style={{background: '#4facfe'}}><i className="fa-solid fa-check"></i></div>}
               </div>
             </aside>
@@ -445,6 +449,7 @@ function Home() {
             </div>
           </section>
         ))}
+        <div id="load-more-sentinel" style={{height: '10px', width: '100%'}}></div>
       </main>
 
       {commentsModal && (

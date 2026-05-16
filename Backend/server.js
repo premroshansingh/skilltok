@@ -202,7 +202,7 @@ app.get("/api/feed", async (_req, res, next) => {
   try {
     const offset = parseInt(req.query.offset || "0", 10);
     const result = await pool.query(`
-      SELECT v.*, u.name AS author_name,
+      SELECT v.*, u.name AS author_name, u.avatar_url AS author_avatar,
       (SELECT COUNT(*) FROM comments c WHERE c.video_id = v.id) AS comment_count,
       (SELECT COUNT(*) FROM likes l WHERE l.video_id = v.id) AS likes_count
       FROM videos v
