@@ -221,7 +221,7 @@ function Home() {
       if (data.success) {
         const newVideos = data.videos.map(video => ({
           ...video,
-          url: (window.CONFIG?.API_URL || "") + `/uploads/${video.filename}`
+          url: video.url.startsWith("http") ? video.url : (window.CONFIG?.API_URL || "") + video.url
         }));
         setVideos(prev => reset ? newVideos : [...prev, ...newVideos]);
         
@@ -617,8 +617,8 @@ function Profile() {
       if (data.success) {
         setVideos(data.videos.map(video => ({
           ...video,
-          url: (window.CONFIG?.API_URL || "") + `/uploads/${video.filename}`,
-          thumbnail_url: video.thumbnail_url ? (window.CONFIG?.API_URL || "") + video.thumbnail_url : ""
+          url: video.url.startsWith("http") ? video.url : (window.CONFIG?.API_URL || "") + video.url,
+          thumbnail_url: video.thumbnail_url ? (video.thumbnail_url.startsWith("http") ? video.thumbnail_url : (window.CONFIG?.API_URL || "") + video.thumbnail_url) : ""
         })));
       }
     });
@@ -626,8 +626,8 @@ function Profile() {
       if (data.success) {
         setSavedVideos(data.videos.map(video => ({
           ...video,
-          url: (window.CONFIG?.API_URL || "") + `/uploads/${video.filename}`,
-          thumbnail_url: video.thumbnail_url ? (window.CONFIG?.API_URL || "") + video.thumbnail_url : ""
+          url: video.url.startsWith("http") ? video.url : (window.CONFIG?.API_URL || "") + video.url,
+          thumbnail_url: video.thumbnail_url ? (video.thumbnail_url.startsWith("http") ? video.thumbnail_url : (window.CONFIG?.API_URL || "") + video.thumbnail_url) : ""
         })));
       }
     });

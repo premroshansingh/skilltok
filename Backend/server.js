@@ -10,7 +10,14 @@ import connectPgSimple from "connect-pg-simple";
 import cors from "cors";
 import multer from "multer";
 import bcrypt from "bcryptjs";
+import { v2 as cloudinary } from "cloudinary";
 import { pool, initDb } from "./db.js";
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
+});
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -149,16 +156,41 @@ app.post("/api/upload", requireLogin, upload.single("video"), async (req, res, n
     const user = await pool.query("SELECT handle FROM users WHERE username = $1", [req.session.user]);
     const handle = user.rows[0]?.handle || "@unknown";
     
-    let thumbFilename = "";
-    if (req.body.thumbnail) {
-      const base64Data = req.body.thumbnail.replace(/^data:image\/\w+;base64,/, "");
-      thumbFilename = `thumb_${Date.now()}.jpg`;
-      fs.writeFileSync(path.join(uploadDir, thumbFilename), base64Data, 'base64');
+    let videoUrl = "";
+    let thumbUrl = "";
+
+    // Upload video to Cloudinary
+    if (process.env.CLOUDINARY_CLOUD_NAME) {
+      const uploadRes = await cloudinary.uploader.upload(req.file.path, {
+        resource_type: "video",
+        folder: "skilltok_videos"
+      });
+      videoUrl = uploadRes.secure_url;
+
+      // Upload thumbnail if exists
+      if (req.body.thumbnail) {
+        const thumbRes = await cloudinary.uploader.upload(req.body.thumbnail, {
+          folder: "skilltok_thumbnails"
+        });
+        thumbUrl = thumbRes.secure_url;
+      }
+      
+      // Cleanup local temp file
+      fs.unlinkSync(req.file.path);
+    } else {
+      // Fallback to local if no cloudinary config
+      videoUrl = `/uploads/${req.file.filename}`;
+      if (req.body.thumbnail) {
+        const base64Data = req.body.thumbnail.replace(/^data:image\/\w+;base64,/, "");
+        const thumbFilename = `thumb_${Date.now()}.jpg`;
+        fs.writeFileSync(path.join(uploadDir, thumbFilename), base64Data, 'base64');
+        thumbUrl = `/uploads/${thumbFilename}`;
+      }
     }
 
     await pool.query(
       "INSERT INTO videos (user_handle, title, category, filename, thumbnail_filename) VALUES ($1, $2, $3, $4, $5)",
-      [handle, req.body.title || "Untitled", req.body.category || "Uncategorized", req.file.filename, thumbFilename]
+      [handle, req.body.title || "Untitled", req.body.category || "Uncategorized", videoUrl, thumbUrl]
     );
     return res.json({ success: true });
   } catch (error) {
@@ -205,8 +237,8 @@ app.get("/api/feed", async (_req, res, next) => {
         author_name: video.author_name,
         title: video.title,
         category: video.category,
-        url: `/uploads/${video.filename}`,
-        thumbnail_url: video.thumbnail_filename ? `/uploads/${video.thumbnail_filename}` : "",
+        url: video.filename,
+        thumbnail_url: video.thumbnail_filename || "",
         likes: parseInt(video.likes_count, 10),
         views: video.views,
         comment_count: parseInt(video.comment_count, 10),
@@ -235,8 +267,8 @@ app.get("/api/my_videos", requireLogin, async (req, res, next) => {
       videos: videos.rows.map((video) => ({
         id: video.id,
         title: video.title,
-        url: `/uploads/${video.filename}`,
-        thumbnail_url: video.thumbnail_filename ? `/uploads/${video.thumbnail_filename}` : "",
+        url: video.filename,
+        thumbnail_url: video.thumbnail_filename || "",
         views: video.views
       }))
     });
@@ -369,8 +401,8 @@ app.get("/api/saved_videos", requireLogin, async (req, res, next) => {
       videos: videos.rows.map((video) => ({
         id: video.id,
         title: video.title,
-        url: `/uploads/${video.filename}`,
-        thumbnail_url: video.thumbnail_filename ? `/uploads/${video.thumbnail_filename}` : "",
+        url: video.filename,
+        thumbnail_url: video.thumbnail_filename || "",
         views: video.views
       }))
     });
