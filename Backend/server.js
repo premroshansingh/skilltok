@@ -227,7 +227,8 @@ app.get("/api/feed", async (_req, res, next) => {
     const result = await pool.query(`
       SELECT v.*, u.name AS author_name, u.avatar_url AS author_avatar,
       (SELECT COUNT(*) FROM comments c WHERE c.video_id = v.id) AS comment_count,
-      (SELECT COUNT(*) FROM likes l WHERE l.video_id = v.id) AS likes_count
+      (SELECT COUNT(*) FROM likes l WHERE l.video_id = v.id) AS likes_count,
+      (SELECT COALESCE(SUM(views), 0) FROM videos WHERE user_handle = u.handle) >= 500 AS is_expert
       FROM videos v
       JOIN users u ON v.user_handle = u.handle
       ORDER BY 
@@ -326,6 +327,7 @@ app.get("/api/me", requireLogin, async (req, res, next) => {
     if (stats.videos >= 5) badges.push({ icon: "fa-solid fa-medal", name: "Consistent Creator" });
     if (stats.likes >= 10) badges.push({ icon: "fa-solid fa-heart", name: "Loved Content" });
     if (stats.views >= 50) badges.push({ icon: "fa-solid fa-fire", name: "Going Viral" });
+    if (stats.views >= 500) badges.push({ icon: "fa-solid fa-circle-check", name: "Verified Expert" });
     if (!badges.length) badges.push({ icon: "fa-solid fa-seedling", name: "New Learner" });
 
     return res.json({
@@ -335,6 +337,8 @@ app.get("/api/me", requireLogin, async (req, res, next) => {
         handle: user.handle,
         bio: user.bio || "",
         avatar_url: user.avatar_url || "",
+        banner_url: user.banner_url || "",
+        points: user.points || 0,
         streak: user.streak_count || 0,
         stats,
         badges
@@ -347,10 +351,10 @@ app.get("/api/me", requireLogin, async (req, res, next) => {
 
 app.post("/api/profile", requireLogin, async (req, res, next) => {
   try {
-    const { name, bio, avatar_url } = req.body;
+    const { name, bio, avatar_url, banner_url } = req.body;
     await pool.query(
-      "UPDATE users SET name = COALESCE($1, name), bio = COALESCE($2, bio), avatar_url = COALESCE($3, avatar_url) WHERE username = $4",
-      [name, bio, avatar_url, req.session.user]
+      "UPDATE users SET name = COALESCE($1, name), bio = COALESCE($2, bio), avatar_url = COALESCE($3, avatar_url), banner_url = COALESCE($4, banner_url) WHERE username = $5",
+      [name, bio, avatar_url, banner_url, req.session.user]
     );
     return res.json({ success: true });
   } catch (error) {
@@ -375,6 +379,7 @@ app.post("/api/like/:videoId", requireLogin, async (req, res, next) => {
       const video = await pool.query("SELECT user_handle FROM videos WHERE id = $1", [videoId]);
       if (video.rows[0]) {
         await createNotification(video.rows[0].user_handle, handle, "like", videoId);
+        await pool.query("UPDATE users SET points = points + 10 WHERE handle = $1", [video.rows[0].user_handle]);
       }
 
       return res.json({ success: true, liked: true });
@@ -411,6 +416,7 @@ app.post("/api/save/:videoId", requireLogin, async (req, res, next) => {
       const video = await pool.query("SELECT user_handle FROM videos WHERE id = $1", [videoId]);
       if (video.rows[0]) {
         await createNotification(video.rows[0].user_handle, handle, "save", videoId);
+        await pool.query("UPDATE users SET points = points + 5 WHERE handle = $1", [video.rows[0].user_handle]);
       }
 
       return res.json({ success: true, saved: true });
@@ -592,6 +598,40 @@ app.post("/api/playlists/add", requireLogin, async (req, res, next) => {
     const posRes = await pool.query("SELECT COALESCE(MAX(position), 0) + 1 as next_pos FROM playlist_videos WHERE playlist_id = $1", [playlist_id]);
     await pool.query("INSERT INTO playlist_videos (playlist_id, video_id, position) VALUES ($1, $2, $3)", [playlist_id, video_id, posRes.rows[0].next_pos]);
     return res.json({ success: true });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+app.get("/api/leaderboard", async (req, res, next) => {
+  try {
+    const result = await pool.query("SELECT name, handle, avatar_url, points FROM users ORDER BY points DESC LIMIT 10");
+    return res.json({ success: true, leaderboard: result.rows });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+app.get("/api/analytics", requireLogin, async (req, res, next) => {
+  try {
+    const user = await pool.query("SELECT handle FROM users WHERE username = $1", [req.session.user]);
+    const handle = user.rows[0]?.handle;
+    
+    const stats = await pool.query(`
+      SELECT 
+        COUNT(*) as total_videos,
+        SUM(views) as total_views,
+        (SELECT COUNT(*) FROM likes l JOIN videos v ON l.video_id = v.id WHERE v.user_handle = $1) as total_likes
+      FROM videos WHERE user_handle = $1
+    `, [handle]);
+
+    const categoryStats = await pool.query(`
+      SELECT category, COUNT(*) as count, SUM(views) as views
+      FROM videos WHERE user_handle = $1
+      GROUP BY category
+    `, [handle]);
+
+    return res.json({ success: true, summary: stats.rows[0], categories: categoryStats.rows });
   } catch (error) {
     return next(error);
   }

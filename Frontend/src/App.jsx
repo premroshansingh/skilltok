@@ -439,7 +439,7 @@ function Home() {
             </aside>
             <div className="video-info">
               <h2 className="creator-name" style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
-                {video.handle} 
+                {video.handle} {video.is_expert && <i className="fa-solid fa-circle-check" style={{color: '#4facfe', fontSize: '0.9rem'}}></i>}
                 <span className="category-tag" style={{background: 'rgba(255,255,255,0.1)', padding: '2px 6px', borderRadius: '4px', fontSize: '0.6rem'}}>{video.category}</span>
                 {video.handle !== localStorage.getItem("userHandle") && (
                   <button 
@@ -564,6 +564,13 @@ function Discover() {
   const [query, setQuery] = useState(urlParams.get("q") || "");
   const [results, setResults] = useState([]);
   const [followed, setFollowed] = useState({});
+  const [leaderboard, setLeaderboard] = useState([]);
+
+  useEffect(() => {
+    api("/api/leaderboard").then(res => res.json()).then(data => {
+      if(data.success) setLeaderboard(data.leaderboard);
+    });
+  }, []);
 
   useEffect(() => {
     if (query.trim().length > 0) {
@@ -627,7 +634,20 @@ function Discover() {
       )}
 
       <section className="glass-card ai-recommendation"><h3><i className="fa-solid fa-wand-magic-sparkles"></i> AI Picks for You</h3><p>Based on your recent interest in Web Development</p><button className="btn-primary compact">Start Learning React</button></section>
-      <h2 className="section-title">Study Rooms <span>Join a room</span></h2>
+      <h2 className="section-title">Global Leaderboard <span>SkillPoints</span></h2>
+      <div className="glass-card" style={{padding: '10px'}}>
+        {leaderboard.map((u, i) => (
+          <div key={u.handle} style={{display: 'flex', alignItems: 'center', gap: '12px', padding: '10px', borderBottom: i === leaderboard.length - 1 ? 'none' : '1px solid rgba(255,255,255,0.05)'}}>
+            <div style={{width: '25px', fontWeight: 'bold', color: i < 3 ? '#ffcc00' : 'rgba(255,255,255,0.5)'}}>#{i+1}</div>
+            <img src={u.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(u.name)}&background=random&color=fff`} style={{width: 35, height: 35, borderRadius: '50%'}} alt="" />
+            <div style={{flex: 1}}>
+              <div style={{fontWeight: 'bold', fontSize: '0.9rem'}}>{u.name}</div>
+              <div style={{fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)'}}>{u.handle}</div>
+            </div>
+            <div style={{fontWeight: 'bold', color: '#4facfe'}}>{u.points} pts</div>
+          </div>
+        ))}
+      </div>
       <div className="trending-grid" style={{marginBottom: '20px'}}>
         {["Coding", "Business", "Motivation", "DIY"].map(room => (
           <div className="trending-card" key={room} onClick={() => go(`/studyroom?room=${room}`)} style={{background: 'linear-gradient(45deg, #2c3e50, #4facfe)'}}>
@@ -717,16 +737,21 @@ function Profile() {
   const [savedVideos, setSavedVideos] = useState([]);
   const [activeTab, setActiveTab] = useState(0);
   const [isEditing, setIsEditing] = useState(false);
-  const [editForm, setEditForm] = useState({ name: "", bio: "", avatar_url: "" });
+  const [editForm, setEditForm] = useState({ name: "", bio: "", avatar_url: "", banner_url: "" });
   const [feedbackModal, setFeedbackModal] = useState(false);
   const [feedbackText, setFeedbackText] = useState("");
+  const [analytics, setAnalytics] = useState(null);
+  const [showAnalytics, setShowAnalytics] = useState(false);
 
   useEffect(() => {
     api("/api/me").then((res) => res.json()).then((data) => {
       if(data.success) {
         setUser(data.user);
-        setEditForm({ name: data.user.name, bio: data.user.bio || "", avatar_url: data.user.avatar_url || "" });
+        setEditForm({ name: data.user.name, bio: data.user.bio || "", avatar_url: data.user.avatar_url || "", banner_url: data.user.banner_url || "" });
       }
+    });
+    api("/api/analytics").then(res => res.json()).then(data => {
+      if(data.success) setAnalytics(data);
     });
     api("/api/my_videos").then((res) => res.json()).then((data) => {
       if (data.success) {
@@ -779,8 +804,9 @@ function Profile() {
     alert("Thank you for your feedback!");
   }
 
-  const current = user || { name: "Loading...", handle: "@loading", bio: "", avatar_url: "", streak: 0, stats: { videos: 0, views: 0, likes: 0, followers: 0, following: 0 }, badges: [] };
+  const current = user || { name: "Loading...", handle: "@loading", bio: "", avatar_url: "", banner_url: "", points: 0, streak: 0, stats: { videos: 0, views: 0, likes: 0, followers: 0, following: 0 }, badges: [] };
   const avatarImage = current.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(current.name)}&background=4FACFE&color=fff`;
+  const isExpert = current.badges.some(b => b.name === "Verified Expert");
 
   const displayVideos = activeTab === 0 ? videos : (activeTab === 2 ? savedVideos : []);
 
@@ -792,24 +818,31 @@ function Profile() {
            <label className="form-group"><span>Full Name</span><input className="form-control" value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} /></label>
            <label className="form-group"><span>Bio</span><textarea className="form-control" value={editForm.bio} onChange={e => setEditForm({...editForm, bio: e.target.value})} /></label>
            <label className="form-group"><span>Avatar URL</span><input className="form-control" value={editForm.avatar_url} onChange={e => setEditForm({...editForm, avatar_url: e.target.value})} /></label>
+           <label className="form-group"><span>Banner URL</span><input className="form-control" value={editForm.banner_url} onChange={e => setEditForm({...editForm, banner_url: e.target.value})} /></label>
            <div style={{display: 'flex', gap: '10px', marginTop: '20px'}}>
               <button type="button" className="btn-edit" onClick={() => setIsEditing(false)} style={{flex: 1, margin: 0}}>Cancel</button>
               <button type="submit" className="btn-primary compact" style={{flex: 1, padding: '10px'}}>Save</button>
            </div>
         </form>
       ) : (
-        <section className="profile-header">
+        <>
+        <div className="profile-banner" style={{height: '120px', background: current.banner_url ? `url(${current.banner_url}) center/cover` : 'linear-gradient(45deg, #1e1b4b, #4facfe)', width: '100%'}}></div>
+        <section className="profile-header" style={{marginTop: '-50px'}}>
           <div className="profile-avatar"><img src={avatarImage} alt="" /></div>
-          <h2 className="profile-name">{current.name}</h2>
-          <p className="profile-handle">{current.handle}</p>
+          <h2 className="profile-name" style={{display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center'}}>
+            {current.name} {isExpert && <i className="fa-solid fa-circle-check" style={{color: '#4facfe', fontSize: '1.2rem'}}></i>}
+          </h2>
+          <p className="profile-handle" style={{color: '#4facfe', fontWeight: 'bold'}}>{current.handle} • {current.points} SkillPoints</p>
           {current.bio && <p style={{fontSize: '0.9rem', marginBottom: '15px', color: 'var(--text-secondary)', padding: '0 20px'}}>{current.bio}</p>}
           <div style={{display: 'flex', gap: '10px', justifyContent: 'center', marginBottom: '20px'}}>
             <button className="btn-primary compact" style={{background: 'transparent', border: '1px solid rgba(255,255,255,0.2)', color: 'white', margin: 0}} onClick={() => setIsEditing(true)}>Edit Profile</button>
-            <button className="btn-primary compact" style={{background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', margin: 0}} onClick={() => setFeedbackModal(true)}><i className="fa-solid fa-comment-dots"></i> Feedback</button>
+            <button className="btn-primary compact" style={{background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', margin: 0}} onClick={() => setShowAnalytics(true)}><i className="fa-solid fa-chart-line"></i> Stats</button>
+            <button className="btn-primary compact" style={{background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', margin: 0}} onClick={() => setFeedbackModal(true)}><i className="fa-solid fa-comment-dots"></i></button>
             <button className="btn-logout" onClick={logout} style={{margin: 0, padding: '5px 15px'}}><i className="fa-solid fa-right-from-bracket"></i></button>
           </div>
           <div className="stats-row">{["videos", "followers", "following", "likes"].map((key) => <div className="stat-box" key={key}><div className="stat-num">{current.stats[key]}</div><div className="stat-label">{key[0].toUpperCase() + key.slice(1)}</div></div>)}</div>
         </section>
+        </>
       )}
       <section className="gamification-section"><div className="streak-card"><i className="fa-solid fa-fire"></i><div><strong>{current.streak} Days</strong><span>Learning Streak!</span></div></div><div className="badges-card"><span>Earned Badges</span><div className="badge-icons">{current.badges.map((badge) => <i key={badge.name} className={badge.icon} title={badge.name}></i>)}</div></div></section>
       <div className="tabs">{["fa-solid fa-border-all", "fa-solid fa-list-ul", "fa-solid fa-bookmark", "fa-solid fa-heart"].map((icon, index) => <div className={`tab ${index === activeTab ? "active" : ""}`} key={icon} onClick={() => setActiveTab(index)}><i className={icon}></i></div>)}</div>
@@ -838,6 +871,37 @@ function Profile() {
               <button className="btn-primary" onClick={submitFeedback}>Submit</button>
               <button className="btn-edit" onClick={() => setFeedbackModal(false)} style={{margin: 0}}>Cancel</button>
             </div>
+          </div>
+        </div>
+      )}
+      {showAnalytics && analytics && (
+        <div className="modal-overlay" style={{zIndex: 2000}}>
+          <div className="glass-card modal-content" style={{maxWidth: '500px', width: '90%'}}>
+            <h3 style={{marginBottom: '15px'}}><i className="fa-solid fa-chart-line"></i> Creator Analytics</h3>
+            <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '20px'}}>
+              <div className="stat-box" style={{background: 'rgba(255,255,255,0.05)', padding: '15px'}}>
+                <div style={{fontSize: '1.2rem', fontWeight: 'bold'}}>{analytics.summary.total_views || 0}</div>
+                <div style={{fontSize: '0.7rem', color: 'rgba(255,255,255,0.5)'}}>Views</div>
+              </div>
+              <div className="stat-box" style={{background: 'rgba(255,255,255,0.05)', padding: '15px'}}>
+                <div style={{fontSize: '1.2rem', fontWeight: 'bold'}}>{analytics.summary.total_likes || 0}</div>
+                <div style={{fontSize: '0.7rem', color: 'rgba(255,255,255,0.5)'}}>Likes</div>
+              </div>
+              <div className="stat-box" style={{background: 'rgba(255,255,255,0.05)', padding: '15px'}}>
+                <div style={{fontSize: '1.2rem', fontWeight: 'bold'}}>{analytics.summary.total_videos || 0}</div>
+                <div style={{fontSize: '0.7rem', color: 'rgba(255,255,255,0.5)'}}>Videos</div>
+              </div>
+            </div>
+            <h4 style={{marginBottom: '10px'}}>Category Performance</h4>
+            <div style={{maxHeight: '200px', overflowY: 'auto', marginBottom: '20px'}}>
+              {analytics.categories.map(c => (
+                <div key={c.category} style={{display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.05)'}}>
+                  <span style={{fontSize: '0.9rem'}}>{c.category}</span>
+                  <span style={{color: '#4facfe', fontWeight: 'bold'}}>{c.views} views</span>
+                </div>
+              ))}
+            </div>
+            <button className="btn-primary" onClick={() => setShowAnalytics(false)}>Close Analytics</button>
           </div>
         </div>
       )}
