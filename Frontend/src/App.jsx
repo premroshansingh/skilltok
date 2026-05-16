@@ -13,9 +13,36 @@ function LogoIcon() {
 }
 
 const translations = {
-  en: { home: "Home", discover: "Discover", activity: "Activity", profile: "Profile", upload: "Upload", logout: "Log Out", edit: "Edit Profile", stats: "Stats", feedback: "Feedback", skillpaths: "Skill Paths", createpath: "Create Path" },
-  hi: { home: "होम", discover: "खोजें", activity: "गतिविधि", profile: "प्रोफ़ाइल", upload: "अपलोड", logout: "लॉग आउट", edit: "प्रोफ़ाइल संपादित करें", stats: "आंकड़े", feedback: "प्रतिक्रिया", skillpaths: "कौशल पथ", createpath: "पथ बनाएं" },
-  es: { home: "Inicio", discover: "Descubrir", activity: "Actividad", profile: "Perfil", upload: "Subir", logout: "Cerrar sesión", edit: "Editar perfil", stats: "Estadísticas", feedback: "Comentarios", skillpaths: "Rutas de habilidades", createpath: "Crear ruta" }
+  en: { 
+    home: "Home", discover: "Discover", activity: "Activity", profile: "Profile", upload: "Upload", logout: "Log Out", 
+    edit: "Edit Profile", stats: "Stats", feedback: "Feedback", skillpaths: "Skill Paths", createpath: "Create Path",
+    welcome: "Welcome Back", login_subtitle: "Log in to continue learning", signup_title: "Create Account", 
+    signup_subtitle: "Join the community", next: "Next Step", finish: "Finish Sign Up", back: "Go Back",
+    search_placeholder: "Search users, skills, topics...", followers: "Followers", following: "Following",
+    videos: "Videos", likes: "Likes", save: "Save", share: "Share", report: "Report", block: "Block",
+    comments: "Comments", post_comment: "Add comment...", analytics_title: "Creator Analytics",
+    performance: "Category Performance", close: "Close"
+  },
+  hi: { 
+    home: "होम", discover: "खोजें", activity: "गतिविधि", profile: "प्रोफ़ाइल", upload: "अपलोड", logout: "लॉग आउट", 
+    edit: "संपादित करें", stats: "आंकड़े", feedback: "प्रतिक्रिया", skillpaths: "कौशल पथ", createpath: "पथ बनाएं",
+    welcome: "स्वागत है", login_subtitle: "सीखना जारी रखने के लिए लॉगिन करें", signup_title: "खाता बनाएं", 
+    signup_subtitle: "समुदाय में शामिल हों", next: "अगला कदम", finish: "साइन अप समाप्त करें", back: "पीछे जाएं",
+    search_placeholder: "उपयोगकर्ता, कौशल, विषय खोजें...", followers: "अनुयायी", following: "अनुसरण",
+    videos: "वीडियो", likes: "पसंद", save: "सहेजें", share: "साझा करें", report: "रिपोर्ट", block: "ब्लॉक",
+    comments: "टिप्पणियाँ", post_comment: "टिप्पणी जोड़ें...", analytics_title: "क्रिएटर एनालिटिक्स",
+    performance: "श्रेणी प्रदर्शन", close: "बंद करें"
+  },
+  es: { 
+    home: "Inicio", discover: "Descubrir", activity: "Actividad", profile: "Perfil", upload: "Subir", logout: "Salir", 
+    edit: "Editar", stats: "Stats", feedback: "Feedback", skillpaths: "Rutas", createpath: "Crear",
+    welcome: "Bienvenido", login_subtitle: "Inicia sesión para aprender", signup_title: "Crear cuenta", 
+    signup_subtitle: "Únete a la comunidad", next: "Siguiente", finish: "Finalizar", back: "Atrás",
+    search_placeholder: "Buscar usuarios, temas...", followers: "Seguidores", following: "Siguiendo",
+    videos: "Videos", likes: "Likes", save: "Guardar", share: "Compartir", report: "Reportar", block: "Bloquear",
+    comments: "Comentarios", post_comment: "Añadir comentario...", analytics_title: "Análisis del creador",
+    performance: "Rendimiento por categoría", close: "Cerrar"
+  }
 };
 
 const navItems = [
@@ -138,8 +165,8 @@ function Login() {
   return (
     <AuthShell>
       <section className="login-box">
-        <h2>Welcome Back</h2>
-        <p>Log in to continue learning</p>
+        <h2>{t.welcome}</h2>
+        <p>{t.login_subtitle}</p>
         <form onSubmit={submit}>
           <Field label="Username" value={form.username} placeholder="Enter username" onChange={(username) => setForm({ ...form, username })} />
           <Field label="Password" type="password" value={form.password} placeholder="Enter password" onChange={(password) => setForm({ ...form, password })} />
@@ -615,10 +642,10 @@ function Discover() {
     ["Public Speaking", "https://images.unsplash.com/photo-1552664730-d307ca884978?w=400&q=80"]
   ];
   return (
-    <Shell title="Discover" active="discover">
+    <Shell title={t.discover} active="discover">
       <div className="search-bar">
         <i className="fa-solid fa-magnifying-glass"></i>
-        <input placeholder="Search users, skills, topics..." value={query} onChange={(e) => setQuery(e.target.value)} />
+        <input placeholder={t.search_placeholder} value={query} onChange={(e) => setQuery(e.target.value)} />
       </div>
       
       {query.length > 0 && (

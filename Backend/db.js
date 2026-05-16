@@ -134,7 +134,10 @@ export async function initDb() {
 
   try {
     await pool.query(`ALTER TABLE videos ADD COLUMN IF NOT EXISTS thumbnail_filename TEXT DEFAULT ''`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_videos_handle ON videos(user_handle)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_likes_video ON likes(video_id)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_follows_following ON follows(following_handle)`);
   } catch (err) {
-    console.error("Error altering videos table:", err.message);
+    console.error("Error updating database schema:", err.message);
   }
 }

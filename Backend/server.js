@@ -214,7 +214,7 @@ app.post("/api/upload", requireLogin, upload.single("video"), async (req, res, n
   }
 });
 
-app.get("/api/feed", async (_req, res, next) => {
+app.get("/api/feed", async (req, res, next) => {
   try {
     const offset = parseInt(req.query.offset || "0", 10);
     let userInterests = [];
@@ -314,7 +314,7 @@ app.get("/api/my_videos", requireLogin, async (req, res, next) => {
 app.get("/api/me", requireLogin, async (req, res, next) => {
   try {
     const result = await pool.query(
-      "SELECT name, handle, streak_count, bio, avatar_url FROM users WHERE username = $1",
+      "SELECT name, handle, streak_count, bio, avatar_url, banner_url, points FROM users WHERE username = $1",
       [req.session.user]
     );
     const user = result.rows[0];
@@ -628,13 +628,13 @@ app.get("/api/analytics", requireLogin, async (req, res, next) => {
     const stats = await pool.query(`
       SELECT 
         COUNT(*) as total_videos,
-        SUM(views) as total_views,
+        COALESCE(SUM(views), 0) as total_views,
         (SELECT COUNT(*) FROM likes l JOIN videos v ON l.video_id = v.id WHERE v.user_handle = $1) as total_likes
       FROM videos WHERE user_handle = $1
     `, [handle]);
 
     const categoryStats = await pool.query(`
-      SELECT category, COUNT(*) as count, SUM(views) as views
+      SELECT category, COUNT(*) as count, COALESCE(SUM(views), 0) as views
       FROM videos WHERE user_handle = $1
       GROUP BY category
     `, [handle]);
