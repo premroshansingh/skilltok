@@ -260,6 +260,35 @@ function SkeletonFeed() {
   );
 }
 
+function SkeletonDiscover() {
+  return (
+    <div className="skeleton-page">
+      <div className="skeleton" style={{width: '100%', height: '50px', borderRadius: '25px', marginBottom: '20px'}}></div>
+      <div className="skeleton" style={{width: '100%', height: '120px', borderRadius: '15px', marginBottom: '20px'}}></div>
+      <div className="skeleton" style={{width: '150px', height: '25px', marginBottom: '15px'}}></div>
+      <div style={{display: 'flex', gap: '10px', overflowX: 'hidden'}}>
+        {[1,2,3].map(i => <div key={i} className="skeleton" style={{minWidth: '150px', height: '100px', borderRadius: '15px'}}></div>)}
+      </div>
+    </div>
+  );
+}
+
+function SkeletonActivity() {
+  return (
+    <div className="skeleton-page">
+      {[1,2,3,4,5].map(i => (
+        <div key={i} style={{display: 'flex', gap: '15px', marginBottom: '15px', alignItems: 'center'}}>
+          <div className="skeleton" style={{width: '45px', height: '45px', borderRadius: '50%'}}></div>
+          <div style={{flex: 1}}>
+            <div className="skeleton" style={{width: '60%', height: '15px', marginBottom: '8px'}}></div>
+            <div className="skeleton" style={{width: '30%', height: '10px'}}></div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function Home() {
   const [videos, setVideos] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -490,7 +519,7 @@ function Home() {
             <div className="video-overlay-top"></div>
             <div className="video-overlay-bottom"></div>
             
-            <div style={{position: 'absolute', bottom: 0, left: 0, right: 0, height: '4px', background: 'rgba(255,255,255,0.2)', zIndex: 5}>
+            <div style={{position: 'absolute', bottom: 0, left: 0, right: 0, height: '4px', background: 'rgba(255,255,255,0.2)', zIndex: 5}}>
               <div id={`progress-${video.id}`} style={{height: '100%', background: '#4facfe', width: '0%', transition: 'width 0.1s linear'}}></div>
             </div>
 
@@ -571,11 +600,12 @@ function Home() {
 
 function Activity() {
   const [notifications, setNotifications] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
   
   useEffect(() => {
     api("/api/notifications").then(res => res.json()).then(data => {
       if (data.success) setNotifications(data.notifications);
-    });
+    }).finally(() => setIsLoading(false));
     api("/api/notifications/read", { method: "POST" });
   }, []);
 
@@ -584,7 +614,7 @@ function Activity() {
   return (
     <Shell title="Activity" active="activity">
       <div className="notification-list">
-        {notifications.length ? notifications.map(n => (
+        {isLoading ? <SkeletonActivity /> : (notifications.length ? notifications.map(n => (
           <div key={n.id} className={`notification-item ${!n.is_read ? 'unread' : ''}`}>
             <img src={n.actor_avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(n.actor_name)}&background=random&color=fff`} alt="" className="notif-avatar" />
             <div className="notif-content">
@@ -593,7 +623,7 @@ function Activity() {
             </div>
             {n.video_id && <div className="notif-video-preview"><i className="fa-solid fa-play"></i></div>}
           </div>
-        )) : <Empty icon="fa-solid fa-bell-slash" text="No notifications yet." />}
+        )) : <Empty icon="fa-solid fa-bell-slash" text="No notifications yet." />)}
       </div>
     </Shell>
   );
@@ -645,13 +675,14 @@ function Discover() {
   const [hashtags, setHashtags] = useState([]);
   const [followed, setFollowed] = useState({});
   const [leaderboard, setLeaderboard] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
   const lang = localStorage.getItem("lang") || "en";
   const t = translations[lang];
 
   useEffect(() => {
     api("/api/leaderboard").then(res => res.json()).then(data => {
       if(data.success) setLeaderboard(data.leaderboard);
-    });
+    }).finally(() => setIsLoading(false));
   }, []);
 
   useEffect(() => {
@@ -690,68 +721,72 @@ function Discover() {
   ];
   return (
     <Shell title={t.discover} active="discover">
-      <div className="search-bar">
-        <i className="fa-solid fa-magnifying-glass"></i>
-        <input placeholder={t.search_placeholder} value={query} onChange={(e) => setQuery(e.target.value)} />
-      </div>
-      
-      {query.length > 0 && (
-        <div className="glass-card" style={{marginBottom: '20px'}}>
-          <h3 style={{marginBottom: '10px', fontSize: '1rem'}}>Search Results</h3>
-          {hashtags.length > 0 && (
-            <div style={{display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '15px'}}>
-              {hashtags.map(h => <div key={h.title} className="category-chip active" style={{cursor: 'pointer'}} onClick={() => go(`/hashtag?tag=${encodeURIComponent(h.title.split('#')[1])}`)}>{h.title}</div>)}
+      {isLoading ? <SkeletonDiscover /> : (
+        <>
+          <div className="search-bar">
+            <i className="fa-solid fa-magnifying-glass"></i>
+            <input placeholder={t.search_placeholder} value={query} onChange={(e) => setQuery(e.target.value)} />
+          </div>
+          
+          {query.length > 0 && (
+            <div className="glass-card" style={{marginBottom: '20px'}}>
+              <h3 style={{marginBottom: '10px', fontSize: '1rem'}}>Search Results</h3>
+              {hashtags.length > 0 && (
+                <div style={{display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '15px'}}>
+                  {hashtags.map(h => <div key={h.title} className="category-chip active" style={{cursor: 'pointer'}} onClick={() => go(`/hashtag?tag=${encodeURIComponent(h.title.split('#')[1])}`)}>{h.title}</div>)}
+                </div>
+              )}
+              {results.length ? results.map((user) => (
+                <div className="search-result-item" key={user.handle} style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.05)'}}>
+                  <div style={{display: 'flex', gap: '12px', alignItems: 'center'}}>
+                    <img src={`https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=random&color=fff`} style={{width: 40, height: 40, borderRadius: '50%'}} alt="" />
+                    <div>
+                      <div style={{fontWeight: 'bold', fontSize: '0.9rem'}}>{user.name}</div>
+                      <div style={{fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)'}}>{user.handle}</div>
+                    </div>
+                  </div>
+                  {user.handle !== localStorage.getItem("userHandle") && (
+                    <button 
+                      className="btn-primary compact" 
+                      onClick={() => follow(user.handle)}
+                      style={{background: followed[user.handle] ? 'rgba(255,255,255,0.1)' : '#4facfe', color: 'white', minWidth: '80px', border: followed[user.handle] ? '1px solid rgba(255,255,255,0.2)' : 'none'}}
+                    >
+                      {followed[user.handle] ? 'Following' : 'Follow'}
+                    </button>
+                  )}
+                </div>
+              )) : (!hashtags.length && <div style={{fontSize: '0.9rem', color: 'rgba(255,255,255,0.7)', padding: '10px 0'}}>No results found matching "{query}"</div>)}
             </div>
           )}
-          {results.length ? results.map((user) => (
-            <div className="search-result-item" key={user.handle} style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.05)'}}>
-              <div style={{display: 'flex', gap: '12px', alignItems: 'center'}}>
-                <img src={`https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=random&color=fff`} style={{width: 40, height: 40, borderRadius: '50%'}} alt="" />
-                <div>
-                  <div style={{fontWeight: 'bold', fontSize: '0.9rem'}}>{user.name}</div>
-                  <div style={{fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)'}}>{user.handle}</div>
-                </div>
-              </div>
-              {user.handle !== localStorage.getItem("userHandle") && (
-                <button 
-                  className="btn-primary compact" 
-                  onClick={() => follow(user.handle)}
-                  style={{background: followed[user.handle] ? 'rgba(255,255,255,0.1)' : '#4facfe', color: 'white', minWidth: '80px', border: followed[user.handle] ? '1px solid rgba(255,255,255,0.2)' : 'none'}}
-                >
-                  {followed[user.handle] ? 'Following' : 'Follow'}
-                </button>
-              )}
-            </div>
-          )) : (!hashtags.length && <div style={{fontSize: '0.9rem', color: 'rgba(255,255,255,0.7)', padding: '10px 0'}}>No results found matching "{query}"</div>)}
-        </div>
-      )}
 
-      <section className="glass-card ai-recommendation"><h3><i className="fa-solid fa-wand-magic-sparkles"></i> AI Picks for You</h3><p>Based on your recent interest in Web Development</p><button className="btn-primary compact">Start Learning React</button></section>
-      <h2 className="section-title">Global Leaderboard <span>SkillPoints</span></h2>
-      <div className="glass-card" style={{padding: '10px'}}>
-        {leaderboard.map((u, i) => (
-          <div key={u.handle} style={{display: 'flex', alignItems: 'center', gap: '12px', padding: '10px', borderBottom: i === leaderboard.length - 1 ? 'none' : '1px solid rgba(255,255,255,0.05)'}}>
-            <div style={{width: '25px', fontWeight: 'bold', color: i < 3 ? '#ffcc00' : 'rgba(255,255,255,0.5)'}}>#{i+1}</div>
-            <img src={u.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(u.name)}&background=random&color=fff`} style={{width: 35, height: 35, borderRadius: '50%'}} alt="" />
-            <div style={{flex: 1}}>
-              <div style={{fontWeight: 'bold', fontSize: '0.9rem'}}>{u.name}</div>
-              <div style={{fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)'}}>{u.handle}</div>
-            </div>
-            <div style={{fontWeight: 'bold', color: '#4facfe'}}>{u.points} pts</div>
+          <section className="glass-card ai-recommendation"><h3><i className="fa-solid fa-wand-magic-sparkles"></i> AI Picks for You</h3><p>Based on your recent interest in Web Development</p><button className="btn-primary compact">Start Learning React</button></section>
+          <h2 className="section-title">Global Leaderboard <span>SkillPoints</span></h2>
+          <div className="glass-card" style={{padding: '10px'}}>
+            {leaderboard.map((u, i) => (
+              <div key={u.handle} style={{display: 'flex', alignItems: 'center', gap: '12px', padding: '10px', borderBottom: i === leaderboard.length - 1 ? 'none' : '1px solid rgba(255,255,255,0.05)'}}>
+                <div style={{width: '25px', fontWeight: 'bold', color: i < 3 ? '#ffcc00' : 'rgba(255,255,255,0.5)'}}>#{i+1}</div>
+                <img src={u.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(u.name)}&background=random&color=fff`} style={{width: 35, height: 35, borderRadius: '50%'}} alt="" />
+                <div style={{flex: 1}}>
+                  <div style={{fontWeight: 'bold', fontSize: '0.9rem'}}>{u.name}</div>
+                  <div style={{fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)'}}>{u.handle}</div>
+                </div>
+                <div style={{fontWeight: 'bold', color: '#4facfe'}}>{u.points} pts</div>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
-      <div className="trending-grid" style={{marginBottom: '20px'}}>
-        {["Coding", "Business", "Motivation", "DIY"].map(room => (
-          <div className="trending-card" key={room} onClick={() => go(`/studyroom?room=${room}`)} style={{background: 'linear-gradient(45deg, #2c3e50, #4facfe)'}}>
-            <i className="fa-solid fa-users" style={{fontSize: '1.5rem', marginBottom: '10px'}}></i>
-            <span>{room} Room</span>
+          <div className="trending-grid" style={{marginBottom: '20px'}}>
+            {["Coding", "Business", "Motivation", "DIY"].map(room => (
+              <div className="trending-card" key={room} onClick={() => go(`/studyroom?room=${room}`)} style={{background: 'linear-gradient(45deg, #2c3e50, #4facfe)'}}>
+                <i className="fa-solid fa-users" style={{fontSize: '1.5rem', marginBottom: '10px'}}></i>
+                <span>{room} Room</span>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
-      
-      <h2 className="section-title">Trending Categories <span>See all</span></h2>
-      <div className="trending-grid">{cards.map(([label, image]) => <div className="trending-card" key={label} style={{ backgroundImage: `url(${image})` }}><span>{label}</span></div>)}</div>
+          
+          <h2 className="section-title">Trending Categories <span>See all</span></h2>
+          <div className="trending-grid">{cards.map(([label, image]) => <div className="trending-card" key={label} style={{ backgroundImage: `url(${image})` }}><span>{label}</span></div>)}</div>
+        </>
+      )}
     </Shell>
   );
 }
@@ -801,11 +836,15 @@ function Upload() {
     formData.append("category", category);
     if (thumbnail) formData.append("thumbnail", thumbnail);
     setStatus("Uploading... Please wait.");
-    const response = await api("/api/upload", { method: "POST", body: formData });
-    const data = await response.json();
-    if (!data.success) return setStatus(`Upload failed: ${data.message}`);
-    setStatus("Upload successful! Redirecting...");
-    setTimeout(() => go("/"), 1000);
+    try {
+      const response = await api("/api/upload", { method: "POST", body: formData });
+      const data = await response.json();
+      if (!data.success) return setStatus(`Upload failed: ${data.message || "Unknown error"}`);
+      setStatus("Upload successful! Redirecting...");
+      setTimeout(() => go("/"), 1000);
+    } catch (err) {
+      setStatus("Upload failed: Network error. Please try again.");
+    }
   }
 
   return (
@@ -1029,8 +1068,10 @@ function Profile() {
       if(data.success) {
         setUser(data.user);
         setEditForm({ name: data.user.name, bio: data.user.bio || "", avatar_url: data.user.avatar_url || "", banner_url: data.user.banner_url || "" });
+      } else {
+        go("/login");
       }
-    });
+    }).catch(() => go("/login"));
     api("/api/analytics").then(res => res.json()).then(data => {
       if(data.success) setAnalytics(data);
     });

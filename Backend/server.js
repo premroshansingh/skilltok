@@ -36,7 +36,6 @@ const io = new Server(httpServer, {
   }
 });
 
-const PgSession = connectPgSimple(session);
 const isProduction = process.env.NODE_ENV === "production";
 const port = Number(process.env.PORT || 5000);
 
@@ -56,8 +55,18 @@ app.use(cors({
   credentials: true
 }));
 
+// Use PostgreSQL session store in production, memory store locally (SQLite fallback)
+let sessionStore;
+if (process.env.DATABASE_URL) {
+  const PgSession = connectPgSimple(session);
+  sessionStore = new PgSession({ pool, createTableIfMissing: true });
+} else {
+  console.log("Using MemoryStore for sessions (local dev only)");
+  sessionStore = undefined; // express-session defaults to MemoryStore
+}
+
 app.use(session({
-  store: new PgSession({ pool, createTableIfMissing: true }),
+  store: sessionStore,
   secret: process.env.SECRET_KEY || "super_secret_skilltok_key_for_demo",
   resave: false,
   saveUninitialized: false,
@@ -122,20 +131,22 @@ app.post("/api/login", async (req, res, next) => {
 
 app.post("/api/signup", async (req, res, next) => {
   try {
-    const { username, password, name = "New User" } = req.body;
+    const { username, password, name = "New User", categories = [] } = req.body;
     if (!username || !password) {
       return res.status(400).json({ success: false, message: "Username and password are required" });
     }
 
     const hashedPassword = bcrypt.hashSync(password, 12);
+    const initialBio = categories.length > 0 ? `Interested in: ${categories.join(", ")}` : "";
+    
     await pool.query(
-      "INSERT INTO users (username, password, name, handle) VALUES ($1, $2, $3, $4)",
-      [username, hashedPassword, name, `@${username}`]
+      "INSERT INTO users (username, password, name, handle, bio) VALUES ($1, $2, $3, $4, $5)",
+      [username, hashedPassword, name, `@${username}`, initialBio]
     );
     req.session.user = username;
     return res.json({ success: true });
   } catch (error) {
-    if (error.code === "23505") {
+    if (error.code === "23505" || (error.message && error.message.includes("UNIQUE"))) {
       return res.status(400).json({ success: false, message: "Username already exists" });
     }
     return next(error);
@@ -258,18 +269,38 @@ app.get("/api/feed", async (req, res, next) => {
       userInterests = interestsRes.rows.map(r => r.category);
     }
 
-    const result = await pool.query(`
-      SELECT v.*, u.name AS author_name, u.avatar_url AS author_avatar,
-      (SELECT COUNT(*) FROM comments c WHERE c.video_id = v.id) AS comment_count,
-      (SELECT COUNT(*) FROM likes l WHERE l.video_id = v.id) AS likes_count,
-      (SELECT COALESCE(SUM(views), 0) FROM videos WHERE user_handle = u.handle) >= 500 AS is_expert
-      FROM videos v
-      JOIN users u ON v.user_handle = u.handle
-      ORDER BY 
-        CASE WHEN v.category = ANY($2::text[]) THEN 0 ELSE 1 END,
-        v.timestamp DESC
-      LIMIT 20 OFFSET $1
-    `, [offset, userInterests]);
+    // Build a compatible ORDER BY for both PostgreSQL and SQLite
+    let feedQuery;
+    let feedParams;
+    if (userInterests.length > 0) {
+      const placeholders = userInterests.map((_, i) => `$${i + 2}`).join(", ");
+      feedQuery = `
+        SELECT v.*, u.name AS author_name, u.avatar_url AS author_avatar,
+        (SELECT COUNT(*) FROM comments c WHERE c.video_id = v.id) AS comment_count,
+        (SELECT COUNT(*) FROM likes l WHERE l.video_id = v.id) AS likes_count,
+        (SELECT COALESCE(SUM(views), 0) FROM videos WHERE user_handle = u.handle) >= 500 AS is_expert
+        FROM videos v
+        JOIN users u ON v.user_handle = u.handle
+        ORDER BY
+          CASE WHEN v.category IN (${placeholders}) THEN 0 ELSE 1 END,
+          v.timestamp DESC
+        LIMIT 20 OFFSET $1
+      `;
+      feedParams = [offset, ...userInterests];
+    } else {
+      feedQuery = `
+        SELECT v.*, u.name AS author_name, u.avatar_url AS author_avatar,
+        (SELECT COUNT(*) FROM comments c WHERE c.video_id = v.id) AS comment_count,
+        (SELECT COUNT(*) FROM likes l WHERE l.video_id = v.id) AS likes_count,
+        (SELECT COALESCE(SUM(views), 0) FROM videos WHERE user_handle = u.handle) >= 500 AS is_expert
+        FROM videos v
+        JOIN users u ON v.user_handle = u.handle
+        ORDER BY v.timestamp DESC
+        LIMIT 20 OFFSET $1
+      `;
+      feedParams = [offset];
+    }
+    const result = await pool.query(feedQuery, feedParams);
 
     let followingSet = new Set();
     let likedSet = new Set();
@@ -673,9 +704,18 @@ app.post("/api/playlists/add", requireLogin, async (req, res, next) => {
   }
 });
 
+let leaderboardCache = null;
+let leaderboardLastFetch = 0;
+
 app.get("/api/leaderboard", async (req, res, next) => {
   try {
+    const now = Date.now();
+    if (leaderboardCache && (now - leaderboardLastFetch < 60000)) {
+      return res.json({ success: true, leaderboard: leaderboardCache });
+    }
     const result = await pool.query("SELECT name, handle, avatar_url, points FROM users ORDER BY points DESC LIMIT 10");
+    leaderboardCache = result.rows;
+    leaderboardLastFetch = now;
     return res.json({ success: true, leaderboard: result.rows });
   } catch (error) {
     return next(error);
@@ -746,16 +786,27 @@ app.get("/api/conversations", requireLogin, async (req, res, next) => {
   try {
     const user = await pool.query("SELECT handle FROM users WHERE username = $1", [req.session.user]);
     const handle = user.rows[0]?.handle;
+    // DISTINCT ON is PostgreSQL-only — rewrite using GROUP BY + MAX subquery (works on both)
     const result = await pool.query(`
-      SELECT DISTINCT ON (other_handle) 
-        u.name, u.handle, u.avatar_url, m.content, m.timestamp
+      SELECT u.name, u.handle, u.avatar_url, latest.content, latest.timestamp
       FROM (
-        SELECT sender_handle AS other_handle, content, timestamp FROM messages WHERE receiver_handle = $1
-        UNION ALL
-        SELECT receiver_handle AS other_handle, content, timestamp FROM messages WHERE sender_handle = $1
-      ) m
-      JOIN users u ON m.other_handle = u.handle
-      ORDER BY other_handle, m.timestamp DESC
+        SELECT other_handle, content, timestamp
+        FROM (
+          SELECT sender_handle AS other_handle, content, timestamp FROM messages WHERE receiver_handle = $1
+          UNION ALL
+          SELECT receiver_handle AS other_handle, content, timestamp FROM messages WHERE sender_handle = $1
+        ) combined
+        WHERE timestamp = (
+          SELECT MAX(timestamp)
+          FROM (
+            SELECT sender_handle AS oh, timestamp FROM messages WHERE receiver_handle = $1
+            UNION ALL
+            SELECT receiver_handle AS oh, timestamp FROM messages WHERE sender_handle = $1
+          ) t WHERE t.oh = combined.other_handle
+        )
+      ) latest
+      JOIN users u ON latest.other_handle = u.handle
+      ORDER BY latest.timestamp DESC
     `, [handle]);
     return res.json({ success: true, conversations: result.rows });
   } catch (error) {
