@@ -436,6 +436,10 @@ app.post("/api/like/:videoId", requireLogin, async (req, res, next) => {
     const handle = user.rows[0]?.handle;
     if (!handle) return res.status(401).json({ success: false });
 
+    // Check video exists
+    const videoCheck = await pool.query("SELECT id FROM videos WHERE id = $1", [videoId]);
+    if (!videoCheck.rows.length) return res.status(404).json({ success: false, message: "Video not found" });
+
     const existing = await pool.query("SELECT 1 FROM likes WHERE user_handle = $1 AND video_id = $2", [handle, videoId]);
     if (existing.rows.length > 0) {
       await pool.query("DELETE FROM likes WHERE user_handle = $1 AND video_id = $2", [handle, videoId]);
@@ -591,6 +595,10 @@ app.post("/api/comments/:videoId", requireLogin, async (req, res, next) => {
     const { videoId } = req.params;
     const { content } = req.body;
     if (!content) return res.status(400).json({ success: false, message: "Content required" });
+
+    // Check video exists
+    const videoCheck = await pool.query("SELECT id FROM videos WHERE id = $1", [videoId]);
+    if (!videoCheck.rows.length) return res.status(404).json({ success: false, message: "Video not found" });
 
     const user = await pool.query("SELECT handle FROM users WHERE username = $1", [req.session.user]);
     const handle = user.rows[0]?.handle;

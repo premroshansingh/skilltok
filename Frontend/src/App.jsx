@@ -1,5 +1,52 @@
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, Component } from "react";
 import { io } from "socket.io-client";
+let _setToasts = null;
+function toast(msg, type = "info") {
+  if (_setToasts) _setToasts((prev) => [...prev, { id: Date.now() + Math.random(), msg, type }]);
+}
+function confirm(msg) {
+  return window.confirm(msg); // keep native confirm for destructive actions only
+}
+function Toasts() {
+  const [toasts, setToasts] = useState([]);
+  _setToasts = setToasts;
+  useEffect(() => {
+    if (!toasts.length) return;
+    const t = setTimeout(() => setToasts((prev) => prev.slice(1)), 3000);
+    return () => clearTimeout(t);
+  }, [toasts]);
+  if (!toasts.length) return null;
+  const colors = { info: "#4facfe", success: "#22c55e", error: "#ff0844", warn: "#f59e0b" };
+  return (
+    <div style={{ position: "fixed", top: 20, left: "50%", transform: "translateX(-50%)", zIndex: 9999, display: "flex", flexDirection: "column", gap: 8, pointerEvents: "none", maxWidth: 340, width: "90%" }}>
+      {toasts.map((t) => (
+        <div key={t.id} style={{ background: colors[t.type] || colors.info, color: t.type === "warn" ? "#000" : "#fff", padding: "12px 18px", borderRadius: 12, fontWeight: 600, fontSize: "0.9rem", boxShadow: "0 4px 20px rgba(0,0,0,0.4)", animation: "fadeUp 0.3s ease" }}>
+          {t.msg}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Error Boundary ────────────────────────────────────────────────────────────
+class ErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(error) { return { error }; }
+  componentDidCatch(error, info) { console.error("App error:", error, info); }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100dvh", background: "#09090b", color: "white", padding: 30, textAlign: "center" }}>
+          <i className="fa-solid fa-triangle-exclamation" style={{ fontSize: "3rem", color: "#ff0844", marginBottom: 20 }}></i>
+          <h2 style={{ marginBottom: 10 }}>Something went wrong</h2>
+          <p style={{ color: "rgba(255,255,255,0.5)", marginBottom: 24, fontSize: "0.9rem" }}>{this.state.error.message}</p>
+          <button className="btn-primary compact" onClick={() => { this.setState({ error: null }); window.location.href = "/"; }}>Go Home</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // ── Logo ──────────────────────────────────────────────────────────────────────
 function LogoIcon() {
@@ -173,7 +220,7 @@ function SkeletonList({ count = 5 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       {Array.from({ length: count }).map((_, i) => (
-        <div key={i} style={{ display: "flex", gap: 12, alignItems: "center" }}>
+        <div key={`skel-${i}`} style={{ display: "flex", gap: 12, alignItems: "center" }}>
           <div className="skeleton" style={{ width: 48, height: 48, borderRadius: "50%", flexShrink: 0 }}></div>
           <div style={{ flex: 1 }}>
             <div className="skeleton" style={{ width: "60%", height: 14, marginBottom: 8 }}></div>
@@ -241,7 +288,7 @@ function Signup() {
     setLoading(true);
     setError("");
     try {
-      const res = await api("/api/signup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
+    const res = await api("/api/signup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
       const data = await res.json();
       if (!data.success) return setError(data.message || "Registration failed");
       localStorage.setItem("userName", form.name);
@@ -421,7 +468,7 @@ function Home() {
     if (navigator.share) {
       navigator.share({ title: video.title, text: `Check out this video by ${video.author_name || video.handle} on SkillTok!`, url: window.location.origin }).catch(() => {});
     } else {
-      navigator.clipboard?.writeText(window.location.origin).then(() => alert("Link copied!")).catch(() => alert("Share not supported on this browser."));
+      navigator.clipboard?.writeText(window.location.origin).then(() => toast("Link copied!", "success")).catch(() => toast("Share not supported on this browser.", "warn"));
     }
   }
 
@@ -432,14 +479,14 @@ function Home() {
   }
 
   function blockUser(handle) {
-    if (window.confirm(`Block ${handle}? You will no longer see their videos.`)) {
+    if (confirm(`Block ${handle}? You will no longer see their videos.`)) {
       setBlockedUsers((prev) => new Set(prev).add(handle));
       setMenuOpen(null);
     }
   }
 
   function reportVideo() {
-    alert("Report submitted. We will review this content.");
+    toast("Report submitted. We will review this content.", "success");
     setMenuOpen(null);
   }
 
@@ -547,7 +594,7 @@ function Home() {
               <p className="video-desc">
                 {video.title.split(/(\s+)/).map((word, i) =>
                   word.startsWith("#")
-                    ? <span key={i} style={{ color: "#4facfe", cursor: "pointer", fontWeight: "bold" }} onClick={() => go(`/hashtag?tag=${encodeURIComponent(word.slice(1))}`)}>{word}</span>
+                    ? <span key={`word-${i}`} style={{ color: "#4facfe", cursor: "pointer", fontWeight: "bold" }} onClick={() => go(`/hashtag?tag=${encodeURIComponent(word.slice(1))}`)}>{word}</span>
                     : word
                 )}
               </p>
@@ -1122,7 +1169,7 @@ function StudyRoom() {
         <div className="chat-messages">
           {messages.length === 0 && <div style={{ textAlign: "center", color: "rgba(255,255,255,0.4)", marginTop: 40 }}>No messages yet. Say hello!</div>}
           {messages.map((m, i) => (
-            <div key={i} className="chat-bubble">
+            <div key={`msg-${m.id || i}`} className="chat-bubble">
               <strong>{m.sender}:</strong> {m.message}
             </div>
           ))}
@@ -1246,7 +1293,7 @@ function DirectChat() {
     <Shell title={targetHandle} back>
       <div style={{ display: "flex", flexDirection: "column", gap: 10, paddingBottom: 80 }}>
         {messages.map((m, i) => (
-          <div key={i} style={{ alignSelf: m.sender_handle === myHandle ? "flex-end" : "flex-start", background: m.sender_handle === myHandle ? "#4facfe" : "rgba(255,255,255,0.1)", padding: "10px 15px", borderRadius: 15, maxWidth: "80%", color: m.sender_handle === myHandle ? "#000" : "white" }}>
+          <div key={`dm-${m.id || i}`} style={{ alignSelf: m.sender_handle === myHandle ? "flex-end" : "flex-start", background: m.sender_handle === myHandle ? "#4facfe" : "rgba(255,255,255,0.1)", padding: "10px 15px", borderRadius: 15, maxWidth: "80%", color: m.sender_handle === myHandle ? "#000" : "white" }}>
             {m.content}
           </div>
         ))}
@@ -1276,11 +1323,8 @@ function Inbox() {
   }, [load]);
 
   async function send(message) {
-    const content = prompt(`Send a message to ${message.other_name}:`);
-    if (!content) return;
     const receiver = message.sender_handle === localStorage.getItem("userHandle") ? message.receiver_handle : message.sender_handle;
-    await api("/api/messages/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ receiver_handle: receiver, content }) });
-    load();
+    go(`/chat?handle=${receiver}`);
   }
 
   return (
@@ -1365,7 +1409,7 @@ function Profile() {
     await api("/api/feedback", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ content: feedbackText }) });
     setFeedbackModal(false);
     setFeedbackText("");
-    alert("Thank you for your feedback!");
+    toast("Thank you for your feedback!", "success");
   }
 
   const current = user || { name: "Loading...", handle: "@loading", bio: "", avatar_url: "", banner_url: "", points: 0, streak: 0, stats: { videos: 0, views: 0, likes: 0, followers: 0, following: 0 }, badges: [] };
@@ -1438,7 +1482,7 @@ function Profile() {
         <div style={{ padding: "0 0 16px" }}>
           <button className="btn-primary compact" style={{ width: "100%", background: "rgba(255,255,255,0.1)" }} onClick={() => {
             const name = prompt("Playlist name:");
-            if (name) api("/api/playlists", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, description: "" }) }).then(() => alert("Created!"));
+            if (name) api("/api/playlists", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, description: "" }) }).then(() => toast("Skill path created!", "success"));
           }}>+ Create New Skill Path</button>
         </div>
       )}
@@ -1524,11 +1568,11 @@ function AdminDashboard() {
 
   async function approveRequest(id) {
     const res = await api(`/api/admin/verify/${id}/approve`, { method: "POST" });
-    if ((await res.json()).success) { setVerifyRequests((prev) => prev.filter((r) => r.id !== id)); alert("User verified!"); }
+    if ((await res.json()).success) { setVerifyRequests((prev) => prev.filter((r) => r.id !== id)); toast("User verified!", "success"); }
   }
 
   async function deleteVideo(id) {
-    if (!window.confirm("Delete this video permanently?")) return;
+    if (!confirm("Delete this video permanently?")) return;
     const res = await api(`/api/admin/video/${id}`, { method: "DELETE" });
     if ((await res.json()).success) setVideos((prev) => prev.filter((v) => v.id !== id));
   }
@@ -1590,17 +1634,25 @@ export default function App() {
     }).catch(() => go("/login"));
   }, [path]);
 
-  if (path === "/login")    return <Login />;
-  if (path === "/signup")   return <Signup />;
-  if (path === "/discover") return <Discover />;
-  if (path === "/upload")   return <Upload />;
-  if (path === "/profile")  return <Profile />;
-  if (path === "/activity") return <Activity />;
-  if (path === "/studyroom") return <StudyRoom />;
-  if (path === "/admin")    return <AdminDashboard />;
-  if (path === "/hashtag")  return <HashtagFeed />;
-  if (path === "/messages") return <Conversations />;
-  if (path === "/chat")     return <DirectChat />;
-  if (path === "/inbox")    return <Inbox />;
-  return <Home />;
+  let Page;
+  if (path === "/login")     Page = <Login />;
+  else if (path === "/signup")    Page = <Signup />;
+  else if (path === "/discover")  Page = <Discover />;
+  else if (path === "/upload")    Page = <Upload />;
+  else if (path === "/profile")   Page = <Profile />;
+  else if (path === "/activity")  Page = <Activity />;
+  else if (path === "/studyroom") Page = <StudyRoom />;
+  else if (path === "/admin")     Page = <AdminDashboard />;
+  else if (path === "/hashtag")   Page = <HashtagFeed />;
+  else if (path === "/messages")  Page = <Conversations />;
+  else if (path === "/chat")      Page = <DirectChat />;
+  else if (path === "/inbox")     Page = <Inbox />;
+  else Page = <Home />;
+
+  return (
+    <ErrorBoundary>
+      <Toasts />
+      {Page}
+    </ErrorBoundary>
+  );
 }
