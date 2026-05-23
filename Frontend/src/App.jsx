@@ -585,15 +585,6 @@ function Home() {
     </div>
   );
 }
-mment(e.target.value)} />
-            <button type="submit" className="btn-primary compact" disabled={!newComment.trim()}><i className="fa-solid fa-paper-plane"></i></button>
-          </form>
-        </div>
-      )}
-      <BottomNav active="home" />
-    </div>
-  );
-}
 
 // ── Discover (reworked) ───────────────────────────────────────────────────────
 function Discover() {
