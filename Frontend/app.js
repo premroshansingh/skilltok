@@ -30,8 +30,8 @@ function toggleLike(element) {
             span.innerText = num + 1;
         }
     } else {
-        // icon.classList.remove("fa-solid");
-        // icon.classList.add("fa-regular");
+        icon.classList.remove("fa-solid");
+        icon.classList.add("fa-regular");
         if (isK) {
             span.innerText = (num - 0.1).toFixed(1) + 'K';
         } else {

@@ -20,22 +20,22 @@ if (!process.env.DATABASE_URL) {
   // Mock the pg Pool interface for SQLite
   pool = {
     async query(text, params = []) {
-      // Expand $N → ? and build matching params array for SQLite
-      // PostgreSQL allows $1 to appear multiple times (reused), SQLite needs one value per ?
+      // Expand $N → ? for SQLite. PostgreSQL allows $1 to appear multiple times (reused).
+      // We track each unique $N index and map them to positional ? params.
       const expandedParams = [];
       let sqliteText = text.replace(/\$(\d+)/g, (_, n) => {
-        const val = params[parseInt(n, 10) - 1];
-        expandedParams.push(val);
+        expandedParams.push(params[parseInt(n, 10) - 1]);
         return "?";
       });
 
       // Strip PostgreSQL casts like ::text[] or ::int
-      sqliteText = sqliteText.replace(/::[a-z0-9_\[\]]+/gi, "");
+      sqliteText = sqliteText.replace(/::[a-z0-9_[\]]+/gi, "");
       // ILIKE → LIKE (SQLite LIKE is case-insensitive for ASCII)
       sqliteText = sqliteText.replace(/ILIKE/gi, "LIKE");
-      // Replace ANY(?) with (1=0) and remove the corresponding param
+      // Replace ANY(?) with (1=0) and remove the corresponding array param
       sqliteText = sqliteText.replace(/ANY\(\?\)/g, () => {
-        expandedParams.splice(expandedParams.findLastIndex(p => Array.isArray(p)), 1);
+        const idx = expandedParams.findIndex(p => Array.isArray(p));
+        if (idx !== -1) expandedParams.splice(idx, 1);
         return "(1=0)";
       });
       // Remove DISTINCT ON (...) — not supported in SQLite
@@ -45,7 +45,7 @@ if (!process.env.DATABASE_URL) {
 
       // Check if it's a write query with RETURNING
       const hasReturning = /RETURNING/i.test(sqliteText);
-      const cleanedText = hasReturning ? sqliteText.replace(/RETURNING[^;]*/i, "") : sqliteText;
+      const cleanedText = hasReturning ? sqliteText.replace(/RETURNING[\s\S]*/i, "") : sqliteText;
       const isRead = cleanedText.trim().toUpperCase().startsWith("SELECT");
 
       try {
@@ -56,7 +56,7 @@ if (!process.env.DATABASE_URL) {
         } else {
           const stmt = db.prepare(cleanedText);
           const info = stmt.run(...finalParams);
-          // If RETURNING was requested, fetch the inserted row back by id
+          // If RETURNING was requested, fetch the inserted/updated row back by id
           if (hasReturning && info.lastInsertRowid) {
             const tableMatch = cleanedText.match(/INTO\s+(\w+)/i) || cleanedText.match(/UPDATE\s+(\w+)/i);
             if (tableMatch) {
@@ -124,7 +124,6 @@ export async function initDb() {
           title TEXT NOT NULL,
           category TEXT NOT NULL,
           filename TEXT NOT NULL,
-          likes INTEGER DEFAULT 0,
           views INTEGER DEFAULT 0,
           thumbnail_filename TEXT DEFAULT '',
           timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -249,8 +248,8 @@ export async function initDb() {
         for (const col of table.columns) {
           try {
             await pool.query(`ALTER TABLE ${table.name} ADD COLUMN ${col.name} ${col.type}`);
-          } catch (err) {
-            // Column might already exist, which is fine in SQLite
+          } catch (_err) {
+            // Column already exists — fine in SQLite
           }
         }
       }
@@ -269,7 +268,7 @@ export async function initDb() {
       await pool.query(sql);
     }
   } else {
-    // PostgreSQL initialization
+    // PostgreSQL initialization — full schema with all columns from the start
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
@@ -278,7 +277,12 @@ export async function initDb() {
         name TEXT NOT NULL,
         handle TEXT NOT NULL,
         streak_count INTEGER DEFAULT 0,
-        last_login DATE
+        last_login DATE,
+        bio TEXT DEFAULT '',
+        avatar_url TEXT DEFAULT '',
+        banner_url TEXT DEFAULT '',
+        points INTEGER DEFAULT 0,
+        is_admin BOOLEAN DEFAULT FALSE
       )
     `);
 
@@ -289,8 +293,8 @@ export async function initDb() {
         title TEXT NOT NULL,
         category TEXT NOT NULL,
         filename TEXT NOT NULL,
-        likes INTEGER DEFAULT 0,
         views INTEGER DEFAULT 0,
+        thumbnail_filename TEXT DEFAULT '',
         timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
       )
     `);
@@ -330,16 +334,6 @@ export async function initDb() {
         PRIMARY KEY (user_handle, video_id)
       )
     `);
-
-    try {
-      await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT DEFAULT ''`);
-      await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT DEFAULT ''`);
-      await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS banner_url TEXT DEFAULT ''`);
-      await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS points INTEGER DEFAULT 0`);
-      await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE`);
-    } catch (err) {
-      console.error("Error altering users table:", err.message);
-    }
 
     await pool.query(`
       CREATE TABLE IF NOT EXISTS saves (
@@ -406,16 +400,41 @@ export async function initDb() {
       )
     `);
 
-    try {
-      await pool.query(`ALTER TABLE videos ADD COLUMN IF NOT EXISTS thumbnail_filename TEXT DEFAULT ''`);
-      await pool.query(`CREATE INDEX IF NOT EXISTS idx_videos_handle ON videos(user_handle)`);
-      await pool.query(`CREATE INDEX IF NOT EXISTS idx_likes_video ON likes(video_id)`);
-      await pool.query(`CREATE INDEX IF NOT EXISTS idx_follows_following ON follows(following_handle)`);
-      await pool.query(`CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_handle)`);
-      await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_points ON users(points DESC)`);
-      await pool.query(`CREATE INDEX IF NOT EXISTS idx_users_handle ON users(handle)`);
-    } catch (err) {
-      console.error("Error updating database schema:", err.message);
+    // Safe migrations for existing deployments
+    const migrations = [
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT DEFAULT ''`,
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT DEFAULT ''`,
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS banner_url TEXT DEFAULT ''`,
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS points INTEGER DEFAULT 0`,
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE`,
+      `ALTER TABLE videos ADD COLUMN IF NOT EXISTS thumbnail_filename TEXT DEFAULT ''`,
+      // Remove stale likes column from videos if it exists (was never updated)
+      // We intentionally do NOT add it back — likes are counted from the likes table
+    ];
+
+    for (const sql of migrations) {
+      try {
+        await pool.query(sql);
+      } catch (err) {
+        console.error("Migration warning:", err.message);
+      }
+    }
+
+    const indexes = [
+      `CREATE INDEX IF NOT EXISTS idx_videos_handle ON videos(user_handle)`,
+      `CREATE INDEX IF NOT EXISTS idx_likes_video ON likes(video_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_follows_following ON follows(following_handle)`,
+      `CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_handle)`,
+      `CREATE INDEX IF NOT EXISTS idx_users_points ON users(points DESC)`,
+      `CREATE INDEX IF NOT EXISTS idx_users_handle ON users(handle)`
+    ];
+
+    for (const sql of indexes) {
+      try {
+        await pool.query(sql);
+      } catch (err) {
+        console.error("Index warning:", err.message);
+      }
     }
   }
 }
