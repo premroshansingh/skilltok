@@ -134,11 +134,16 @@ function useRoute() {
   return { path, params };
 }
 
-// ── Safe avatar URL ───────────────────────────────────────────────────────────
+// ── Safe URL helpers ──────────────────────────────────────────────────────────
+function mediaUrl(url) {
+  if (!url || typeof url !== "string" || url.trim() === "") return "";
+  return url.startsWith("http") ? url : (window.CONFIG?.API_URL || "") + url;
+}
+
 function avatarUrl(name, url) {
-  if (url) return url;
-  const safeName = encodeURIComponent(name || "User");
-  return `https://ui-avatars.com/api/?name=${safeName}&background=random&color=fff`;
+  if (url && typeof url === "string" && url.trim()) return url;
+  const safeName = encodeURIComponent((name && typeof name === "string" ? name.trim() : "") || "User");
+  return `https://ui-avatars.com/api/?name=${safeName}&background=4facfe&color=fff`;
 }
 
 // ── Shared UI ─────────────────────────────────────────────────────────────────
@@ -650,14 +655,14 @@ function Discover() {
 
   useEffect(() => {
     Promise.all([
-      api("/api/trending").then((r) => r.json()),
-      api("/api/suggested_users").then((r) => r.json()),
-      api("/api/leaderboard").then((r) => r.json())
+      api("/api/trending").then((r) => r.json()).catch(() => ({ success: false })),
+      api("/api/suggested_users").then((r) => r.json()).catch(() => ({ success: false })),
+      api("/api/leaderboard").then((r) => r.json()).catch(() => ({ success: false }))
     ]).then(([tData, sData, lData]) => {
       if (tData.success) setTrending(tData.videos);
       if (sData.success) setSuggested(sData.users);
       if (lData.success) setLeaderboard(lData.leaderboard);
-    }).finally(() => setIsLoading(false));
+    }).catch(() => {}).finally(() => setIsLoading(false));
   }, []);
 
   // Debounced search
@@ -669,6 +674,7 @@ function Discover() {
       api(`/api/search?q=${encodeURIComponent(query)}`)
         .then((r) => r.json())
         .then((data) => { if (data.success) setSearchResults({ users: data.users || [], hashtags: data.hashtags || [], videos: data.videos || [] }); })
+        .catch(() => {})
         .finally(() => setIsSearching(false));
     }, 350);
     return () => clearTimeout(searchTimer.current);
@@ -751,8 +757,8 @@ function Discover() {
                 {searchResults.videos.map((v) => (
                   <div key={v.id} style={{ display: "flex", gap: 12, alignItems: "center", cursor: "pointer" }} onClick={() => go("/")}>
                     <div style={{ width: 56, height: 80, borderRadius: 8, overflow: "hidden", background: "#111", flexShrink: 0 }}>
-                      {v.thumbnail_filename
-                        ? <img src={v.thumbnail_filename.startsWith("http") ? v.thumbnail_filename : (window.CONFIG?.API_URL || "") + v.thumbnail_filename} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="" />
+                      {mediaUrl(v.thumbnail_filename)
+                        ? <img src={mediaUrl(v.thumbnail_filename)} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="" />
                         : <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}><i className="fa-solid fa-play" style={{ color: "rgba(255,255,255,0.3)" }}></i></div>}
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -801,9 +807,11 @@ function Discover() {
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 24 }}>
                     {trending.slice(0, 6).map((v) => (
                       <div key={v.id} style={{ borderRadius: 12, overflow: "hidden", background: "#111", position: "relative", aspectRatio: "9/14", cursor: "pointer" }} onClick={() => go("/")}>
-                        {v.thumbnail_filename
-                          ? <img src={v.thumbnail_filename.startsWith("http") ? v.thumbnail_filename : (window.CONFIG?.API_URL || "") + v.thumbnail_filename} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="" />
-                          : <video src={v.filename.startsWith("http") ? v.filename : (window.CONFIG?.API_URL || "") + v.filename} muted style={{ width: "100%", height: "100%", objectFit: "cover" }} />}
+                        {mediaUrl(v.thumbnail_filename)
+                          ? <img src={mediaUrl(v.thumbnail_filename)} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="" />
+                          : mediaUrl(v.filename)
+                            ? <video src={mediaUrl(v.filename)} muted style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                            : <div style={{ width: "100%", height: "100%", background: "#222", display: "flex", alignItems: "center", justifyContent: "center" }}><i className="fa-solid fa-play" style={{ color: "rgba(255,255,255,0.3)", fontSize: "1.5rem" }}></i></div>}
                         <div style={{ position: "absolute", inset: 0, background: "linear-gradient(to top, rgba(0,0,0,0.8) 0%, transparent 50%)" }}></div>
                         <div style={{ position: "absolute", bottom: 8, left: 8, right: 8 }}>
                           <div style={{ fontSize: "0.75rem", fontWeight: "bold", marginBottom: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v.title}</div>
@@ -1206,9 +1214,11 @@ function HashtagFeed() {
         <div className="video-grid">
           {videos.map((v) => (
             <div className="grid-item" key={v.id} onClick={() => go("/")}>
-              {v.thumbnail_filename
-                ? <img src={v.thumbnail_filename.startsWith("http") ? v.thumbnail_filename : (window.CONFIG?.API_URL || "") + v.thumbnail_filename} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="" />
-                : <video src={v.filename} muted onLoadedData={(e) => { e.target.currentTime = 1; }} style={{ width: "100%", height: "100%", objectFit: "cover" }} />}
+              {mediaUrl(v.thumbnail_filename)
+                ? <img src={mediaUrl(v.thumbnail_filename)} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="" />
+                : mediaUrl(v.filename)
+                  ? <video src={mediaUrl(v.filename)} muted onLoadedData={(e) => { e.target.currentTime = 1; }} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  : <div style={{ width: "100%", height: "100%", background: "#222" }}></div>}
               <div className="views"><i className="fa-solid fa-play"></i> {v.views}</div>
             </div>
           ))}
@@ -1363,8 +1373,7 @@ function Profile() {
   const [showAnalytics, setShowAnalytics] = useState(false);
 
   function normalizeUrl(url) {
-    if (!url) return "";
-    return url.startsWith("http") ? url : (window.CONFIG?.API_URL || "") + url;
+    return mediaUrl(url);
   }
 
   useEffect(() => {
@@ -1490,9 +1499,11 @@ function Profile() {
       <div className="video-grid">
         {displayVideos.length ? displayVideos.map((video) => (
           <div className="grid-item" key={video.id}>
-            {video.thumbnail_url
-              ? <img src={video.thumbnail_url} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="" />
-              : <video src={video.url} muted loop preload="metadata" onLoadedData={(e) => { e.target.currentTime = 1; }} />}
+            {mediaUrl(video.thumbnail_url)
+              ? <img src={mediaUrl(video.thumbnail_url)} style={{ width: "100%", height: "100%", objectFit: "cover" }} alt="" />
+              : mediaUrl(video.url)
+                ? <video src={mediaUrl(video.url)} muted loop preload="metadata" onLoadedData={(e) => { e.target.currentTime = 1; }} />
+                : <div style={{ width: "100%", height: "100%", background: "#222" }}></div>}
             <div className="views"><i className="fa-solid fa-play"></i> {video.views}</div>
           </div>
         )) : (
