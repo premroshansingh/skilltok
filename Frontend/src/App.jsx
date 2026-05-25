@@ -146,6 +146,24 @@ function avatarUrl(name, url) {
   return `https://ui-avatars.com/api/?name=${safeName}&background=4facfe&color=fff`;
 }
 
+function matchesCategoryFilter(video, activeCategory) {
+  if (activeCategory === "For You") return true;
+
+  const haystack = `${video.category || ""} ${video.title || ""}`.toLowerCase();
+  const rules = {
+    Motivation: ["motivation", "mindset", "inspire"],
+    Courses: ["course", "academic", "study", "education"],
+    "Kids Special": ["kid", "child", "children"],
+    Youth: ["youth", "student", "career", "trend"],
+    Farming: ["farm", "agriculture", "crop"],
+    World: ["world", "culture", "history", "geography"],
+    Tech: ["tech", "coding", "software", "programming", "ai"],
+    Business: ["business", "finance", "startup", "money"]
+  };
+
+  return (rules[activeCategory] || [activeCategory.toLowerCase()]).some((term) => haystack.includes(term));
+}
+
 // ── Shared UI ─────────────────────────────────────────────────────────────────
 function BottomNav({ active }) {
   const lang = localStorage.getItem("lang") || "en";
@@ -369,18 +387,25 @@ function Home() {
   // Fix: store last-tap time per video in a ref, not on the DOM element
   const lastTapRef = useRef({});
   const likedRef = useRef({});
+  const offsetRef = useRef(0);
+  const isFetchingRef = useRef(false);
   likedRef.current = liked;
 
   const loadFeed = useCallback((reset = false) => {
-    const currentOffset = reset ? 0 : offset;
+    if (isFetchingRef.current) return;
+
+    const currentOffset = reset ? 0 : offsetRef.current;
+    isFetchingRef.current = true;
     if (reset) setIsLoading(true);
+    if (reset) setHasMore(true);
     api(`/api/feed?offset=${currentOffset}`)
       .then((r) => r.json())
       .then((data) => {
         if (!data.success) return;
         const newVideos = data.videos.map((v) => ({
           ...v,
-          url: v.url.startsWith("http") ? v.url : (window.CONFIG?.API_URL || "") + v.url
+          url: mediaUrl(v.url),
+          thumbnail_url: mediaUrl(v.thumbnail_url)
         }));
         setVideos((prev) => reset ? newVideos : [...prev, ...newVideos]);
         // Build state maps from fresh data — use functional updater to avoid stale closure
@@ -399,14 +424,24 @@ function Home() {
           data.videos.forEach((v) => { next[v.id] = v.is_saved; });
           return next;
         });
-        if (data.videos.length < 20) setHasMore(false);
-        setOffset(currentOffset + 20);
+        setWatchLater((prev) => {
+          const next = reset ? {} : { ...prev };
+          data.videos.forEach((v) => { next[v.id] = v.is_watch_later; });
+          return next;
+        });
+        const nextOffset = currentOffset + data.videos.length;
+        offsetRef.current = nextOffset;
+        setOffset(nextOffset);
+        setHasMore(data.videos.length === 20);
       })
       .catch(() => {})
-      .finally(() => setIsLoading(false));
-  }, [offset]); // eslint-disable-line react-hooks/exhaustive-deps
+      .finally(() => {
+        isFetchingRef.current = false;
+        setIsLoading(false);
+      });
+  }, []);
 
-  useEffect(() => { loadFeed(true); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { loadFeed(true); }, [loadFeed]);
 
   // IntersectionObserver for autoplay + infinite scroll
   useEffect(() => {
@@ -490,9 +525,20 @@ function Home() {
     }
   }
 
-  function reportVideo() {
-    toast("Report submitted. We will review this content.", "success");
-    setMenuOpen(null);
+  async function reportVideo(videoId) {
+    try {
+      const res = await api(`/api/report/${videoId}`, { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        toast("Report submitted. We will review this content.", "success");
+      } else {
+        toast(data.message || "Could not submit report.", "error");
+      }
+    } catch {
+      toast("Could not submit report.", "error");
+    } finally {
+      setMenuOpen(null);
+    }
   }
 
   async function openComments(videoId) {
@@ -516,6 +562,7 @@ function Home() {
   }
 
   const feed = videos.length ? videos : [{ id: "welcome", handle: "@SkillTokOfficial", author_name: "SkillTok", title: "Welcome! Upload the first learning video.", category: "Welcome", url: "https://www.w3schools.com/html/mov_bbb.mp4", likes: 0 }];
+  const visibleFeed = feed.filter((video) => !blockedUsers.has(video.handle) && matchesCategoryFilter(video, activeCategory));
   const lang = localStorage.getItem("lang") || "en";
   const t = translations[lang];
 
@@ -530,7 +577,7 @@ function Home() {
         </div>
       </header>
       <main className="video-feed">
-        {isLoading ? <SkeletonFeed /> : feed.filter((v) => !blockedUsers.has(v.handle)).map((video) => (
+        {isLoading ? <SkeletonFeed /> : visibleFeed.map((video) => (
           <section className="video-container" key={video.id}>
             <video
               data-feed="1"
@@ -572,7 +619,7 @@ function Home() {
                 <button className="action-btn" onClick={() => setMenuOpen(video.id === menuOpen ? null : video.id)}><i className="fa-solid fa-ellipsis-vertical"></i></button>
                 {menuOpen === video.id && (
                   <div className="glass-card" style={{ position: "absolute", bottom: 50, right: 0, zIndex: 10, padding: 10, borderRadius: 10, display: "flex", flexDirection: "column", gap: 8, minWidth: 120 }}>
-                    <button className="btn-primary compact" style={{ background: "rgba(255,50,50,0.8)", padding: "5px 10px", fontSize: "0.9rem" }} onClick={reportVideo}><i className="fa-solid fa-flag"></i> Report</button>
+                    <button className="btn-primary compact" style={{ background: "rgba(255,50,50,0.8)", padding: "5px 10px", fontSize: "0.9rem" }} onClick={() => reportVideo(video.id)}><i className="fa-solid fa-flag"></i> Report</button>
                     <button className="btn-primary compact" style={{ background: "rgba(255,50,50,0.8)", padding: "5px 10px", fontSize: "0.9rem" }} onClick={() => blockUser(video.handle)}><i className="fa-solid fa-ban"></i> Block</button>
                   </div>
                 )}
@@ -607,6 +654,11 @@ function Home() {
             </div>
           </section>
         ))}
+        {!isLoading && visibleFeed.length === 0 && (
+          <div style={{ padding: 24 }}>
+            <Empty icon="fa-solid fa-video-slash" text={`No videos found for ${activeCategory}.`} />
+          </div>
+        )}
         <div id="load-more-sentinel" style={{ height: 10, width: "100%" }}></div>
       </main>
 
@@ -1301,7 +1353,7 @@ function DirectChat() {
 
   return (
     <Shell title={targetHandle} back>
-      <div style={{ display: "flex", flexDirection: "column", gap: 10, paddingBottom: 80 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, paddingBottom: 12 }}>
         {messages.map((m, i) => (
           <div key={`dm-${m.id || i}`} style={{ alignSelf: m.sender_handle === myHandle ? "flex-end" : "flex-start", background: m.sender_handle === myHandle ? "#4facfe" : "rgba(255,255,255,0.1)", padding: "10px 15px", borderRadius: 15, maxWidth: "80%", color: m.sender_handle === myHandle ? "#000" : "white" }}>
             {m.content}
@@ -1309,7 +1361,7 @@ function DirectChat() {
         ))}
         <div ref={bottomRef}></div>
       </div>
-      <form onSubmit={send} className="chat-input-row" style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 480, padding: "12px 15px", background: "rgba(9,9,11,0.95)", borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+      <form onSubmit={send} className="chat-input-row" style={{ position: "sticky", bottom: 0, marginTop: "auto", width: "100%", padding: "12px 15px", background: "rgba(9,9,11,0.95)", borderTop: "1px solid rgba(255,255,255,0.08)", backdropFilter: "blur(12px)" }}>
         <input className="form-control" placeholder="Type a message..." value={text} onChange={(e) => setText(e.target.value)} style={{ margin: 0 }} />
         <button className="icon-btn" style={{ background: "#4facfe" }}><i className="fa-solid fa-paper-plane"></i></button>
       </form>
@@ -1603,7 +1655,7 @@ function AdminDashboard() {
           <div key={v.id} className="glass-card" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: 10 }}>
             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
               <div style={{ width: 40, height: 40, background: "#333", borderRadius: 5, overflow: "hidden" }}>
-                <video src={v.filename} muted style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                <video src={mediaUrl(v.filename)} muted style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               </div>
               <div>
                 <div style={{ fontWeight: "bold", fontSize: "0.85rem" }}>{(v.title || "").slice(0, 30)}...</div>

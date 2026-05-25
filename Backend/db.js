@@ -70,7 +70,10 @@ if (!process.env.DATABASE_URL) {
           return { rows: [], rowCount: info.changes, lastID: info.lastInsertRowid };
         }
       } catch (err) {
-        console.error("SQLite Query Error:", err.message, "\nSQL:", cleanedText.trim());
+        const duplicateColumnMigration = err.message?.includes("duplicate column name") && /^ALTER TABLE /i.test(cleanedText.trim());
+        if (!duplicateColumnMigration) {
+          console.error("SQLite Query Error:", err.message, "\nSQL:", cleanedText.trim());
+        }
         throw err;
       }
     }
@@ -88,6 +91,11 @@ export { pool };
 
 export async function initDb() {
   if (isSqlite) {
+    async function sqliteColumnExists(tableName, columnName) {
+      const result = await pool.query(`PRAGMA table_info(${tableName})`);
+      return result.rows.some((column) => column.name === columnName);
+    }
+
     // SQLite-specific initialization
     const tables = [
       {

@@ -13,11 +13,19 @@ import bcrypt from "bcryptjs";
 import { v2 as cloudinary } from "cloudinary";
 import { pool, initDb } from "./db.js";
 
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET
-});
+const cloudinaryEnabled = Boolean(
+  process.env.CLOUDINARY_CLOUD_NAME &&
+  process.env.CLOUDINARY_API_KEY &&
+  process.env.CLOUDINARY_API_SECRET
+);
+
+if (cloudinaryEnabled) {
+  cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET
+  });
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -31,23 +39,62 @@ const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
-    origin: (origin, callback) => { callback(null, true); },
+    origin(origin, callback) {
+      if (isAllowedOrigin(origin)) return callback(null, true);
+      return callback(new Error("Not allowed by CORS"));
+    },
     credentials: true
   }
 });
 
 const isProduction = process.env.NODE_ENV === "production";
 const port = Number(process.env.PORT || 5000);
+const sessionSecret = process.env.SECRET_KEY || (!isProduction ? "super_secret_skilltok_key_for_demo" : "");
+const allowedOrigins = new Set(
+  (process.env.ALLOWED_ORIGINS || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean)
+);
+
+if (!sessionSecret) {
+  throw new Error("SECRET_KEY is required in production");
+}
+
+function isAllowedOrigin(origin) {
+  if (!origin) return true;
+
+  if (allowedOrigins.has(origin)) return true;
+
+  try {
+    const { hostname } = new URL(origin);
+    const allowedHosts = ["localhost", "127.0.0.1"];
+    return allowedHosts.includes(hostname) || hostname.endsWith(".vercel.app") || hostname.endsWith(".onrender.com");
+  } catch {
+    return false;
+  }
+}
+
+function safeUnlink(filePath) {
+  if (!filePath) return;
+  fs.promises.unlink(filePath).catch(() => {});
+}
+
+function normalizeText(value, maxLength) {
+  const text = typeof value === "string" ? value.trim() : "";
+  return maxLength ? text.slice(0, maxLength) : text;
+}
+
+function isValidVideoId(value) {
+  return Number.isInteger(Number(value)) && Number(value) > 0;
+}
 
 app.set("trust proxy", 1);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cors({
   origin(origin, callback) {
-    if (!origin) return callback(null, true);
-    const host = new URL(origin).hostname;
-    const allowedHosts = ["localhost", "127.0.0.1"];
-    if (allowedHosts.includes(host) || host.endsWith(".vercel.app") || host.endsWith(".onrender.com")) {
+    if (isAllowedOrigin(origin)) {
       return callback(null, true);
     }
     return callback(new Error("Not allowed by CORS"));
@@ -67,7 +114,7 @@ if (process.env.DATABASE_URL) {
 
 app.use(session({
   store: sessionStore,
-  secret: process.env.SECRET_KEY || "super_secret_skilltok_key_for_demo",
+  secret: sessionSecret,
   resave: false,
   saveUninitialized: false,
   cookie: {
@@ -85,7 +132,17 @@ const storage = multer.diskStorage({
     callback(null, `${Date.now()}_${safeName}`);
   }
 });
-const upload = multer({ storage, limits: { fileSize: 200 * 1024 * 1024 } });
+const upload = multer({
+  storage,
+  limits: { fileSize: 200 * 1024 * 1024 },
+  fileFilter(_req, file, callback) {
+    if (file.mimetype?.startsWith("video/")) {
+      callback(null, true);
+      return;
+    }
+    callback(new Error("Only video uploads are allowed"));
+  }
+});
 
 function requireLogin(req, res, next) {
   if (!req.session.user) return res.status(401).json({ success: false, message: "Not logged in" });
@@ -119,11 +176,16 @@ async function createNotification(userHandle, actorHandle, type, videoId = null)
 
 app.post("/api/login", async (req, res, next) => {
   try {
-    const { username, password } = req.body;
+    const username = normalizeText(req.body.username, 50);
+    const password = typeof req.body.password === "string" ? req.body.password : "";
+    if (!username || !password) {
+      return res.status(400).json({ success: false, message: "Username and password are required" });
+    }
+
     const result = await pool.query("SELECT * FROM users WHERE username = $1", [username]);
     const user = result.rows[0];
 
-    if (!user || !bcrypt.compareSync(password || "", user.password)) {
+    if (!user || !bcrypt.compareSync(password, user.password)) {
       return res.status(401).json({ success: false, message: "Invalid username or password" });
     }
 
@@ -158,9 +220,18 @@ app.post("/api/login", async (req, res, next) => {
 
 app.post("/api/signup", async (req, res, next) => {
   try {
-    const { username, password, name = "New User", categories = [] } = req.body;
+    const username = normalizeText(req.body.username, 50);
+    const password = typeof req.body.password === "string" ? req.body.password : "";
+    const name = normalizeText(req.body.name, 80) || "New User";
+    const categories = Array.isArray(req.body.categories) ? req.body.categories.slice(0, 10).map((item) => normalizeText(item, 40)).filter(Boolean) : [];
     if (!username || !password) {
       return res.status(400).json({ success: false, message: "Username and password are required" });
+    }
+    if (!/^[a-zA-Z0-9_.-]{3,30}$/.test(username)) {
+      return res.status(400).json({ success: false, message: "Username must be 3-30 characters and use only letters, numbers, dot, underscore, or dash" });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ success: false, message: "Password must be at least 6 characters long" });
     }
 
     const hashedPassword = bcrypt.hashSync(password, 12);
@@ -237,10 +308,13 @@ app.get("/api/me", requireLogin, async (req, res, next) => {
 
 app.post("/api/profile", requireLogin, async (req, res, next) => {
   try {
-    const { name, bio, avatar_url, banner_url } = req.body;
+    const name = normalizeText(req.body.name, 80);
+    const bio = normalizeText(req.body.bio, 280);
+    const avatar_url = normalizeText(req.body.avatar_url, 500);
+    const banner_url = normalizeText(req.body.banner_url, 500);
     await pool.query(
       "UPDATE users SET name = COALESCE($1, name), bio = COALESCE($2, bio), avatar_url = COALESCE($3, avatar_url), banner_url = COALESCE($4, banner_url) WHERE username = $5",
-      [name, bio, avatar_url, banner_url, req.session.user]
+      [name || null, bio || "", avatar_url || "", banner_url || "", req.session.user]
     );
     return res.json({ success: true });
   } catch (error) {
@@ -303,18 +377,21 @@ app.get("/api/feed", async (req, res, next) => {
     let followingSet = new Set();
     let likedSet = new Set();
     let savedSet = new Set();
+    let watchLaterSet = new Set();
     if (req.session.user) {
       const userRes = await pool.query("SELECT handle FROM users WHERE username = $1", [req.session.user]);
       const handle = userRes.rows[0]?.handle;
       if (handle) {
-        const [followsRes, likesRes, savesRes] = await Promise.all([
+        const [followsRes, likesRes, savesRes, watchLaterRes] = await Promise.all([
           pool.query("SELECT following_handle FROM follows WHERE follower_handle = $1", [handle]),
           pool.query("SELECT video_id FROM likes WHERE user_handle = $1", [handle]),
-          pool.query("SELECT video_id FROM saves WHERE user_handle = $1", [handle])
+          pool.query("SELECT video_id FROM saves WHERE user_handle = $1", [handle]),
+          pool.query("SELECT video_id FROM watch_later WHERE user_handle = $1", [handle])
         ]);
         followsRes.rows.forEach(r => followingSet.add(r.following_handle));
         likesRes.rows.forEach(r => likedSet.add(r.video_id));
         savesRes.rows.forEach(r => savedSet.add(r.video_id));
+        watchLaterRes.rows.forEach(r => watchLaterSet.add(r.video_id));
       }
     }
 
@@ -335,6 +412,7 @@ app.get("/api/feed", async (req, res, next) => {
         is_followed: followingSet.has(video.user_handle),
         is_liked: likedSet.has(video.id),
         is_saved: savedSet.has(video.id),
+        is_watch_later: watchLaterSet.has(video.id),
         is_expert: !!video.is_expert
       }))
     });
@@ -347,8 +425,10 @@ app.get("/api/feed", async (req, res, next) => {
 
 app.post("/api/upload", requireLogin, upload.single("video"), async (req, res, next) => {
   try {
-    const { title, category } = req.body;
+    const title = normalizeText(req.body.title, 160);
+    const category = normalizeText(req.body.category, 80);
     if (!req.file) return res.status(400).json({ success: false, message: "No video file provided" });
+    if (!title) return res.status(400).json({ success: false, message: "Description is required" });
     if (moderateContent(title)) return res.status(400).json({ success: false, message: "Content violates community standards" });
 
     const user = await pool.query("SELECT handle FROM users WHERE username = $1", [req.session.user]);
@@ -357,21 +437,23 @@ app.post("/api/upload", requireLogin, upload.single("video"), async (req, res, n
     let videoUrl = "";
     let thumbUrl = "";
 
-    if (process.env.CLOUDINARY_CLOUD_NAME) {
-      const uploadRes = await cloudinary.uploader.upload(req.file.path, {
-        resource_type: "video",
-        folder: "skilltok_videos"
-      });
-      videoUrl = uploadRes.secure_url;
-
-      if (req.body.thumbnail) {
-        const thumbRes = await cloudinary.uploader.upload(req.body.thumbnail, {
-          folder: "skilltok_thumbnails"
+    if (cloudinaryEnabled) {
+      try {
+        const uploadRes = await cloudinary.uploader.upload(req.file.path, {
+          resource_type: "video",
+          folder: "skilltok_videos"
         });
-        thumbUrl = thumbRes.secure_url;
-      }
+        videoUrl = uploadRes.secure_url;
 
-      fs.unlinkSync(req.file.path);
+        if (req.body.thumbnail) {
+          const thumbRes = await cloudinary.uploader.upload(req.body.thumbnail, {
+            folder: "skilltok_thumbnails"
+          });
+          thumbUrl = thumbRes.secure_url;
+        }
+      } finally {
+        await safeUnlink(req.file.path);
+      }
     } else {
       videoUrl = `/uploads/${req.file.filename}`;
       if (req.body.thumbnail) {
@@ -384,7 +466,7 @@ app.post("/api/upload", requireLogin, upload.single("video"), async (req, res, n
 
     await pool.query(
       "INSERT INTO videos (user_handle, title, category, filename, thumbnail_filename) VALUES ($1, $2, $3, $4, $5)",
-      [handle, title || "Untitled", category || "Uncategorized", videoUrl, thumbUrl]
+      [handle, title, category || "Uncategorized", videoUrl, thumbUrl]
     );
     return res.json({ success: true });
   } catch (error) {
@@ -420,6 +502,7 @@ app.get("/api/my_videos", requireLogin, async (req, res, next) => {
 app.post("/api/view/:videoId", async (req, res, next) => {
   try {
     const { videoId } = req.params;
+    if (!isValidVideoId(videoId)) return res.status(400).json({ success: false, message: "Invalid video id" });
     await pool.query("UPDATE videos SET views = views + 1 WHERE id = $1", [videoId]);
     return res.json({ success: true });
   } catch (error) {
@@ -432,6 +515,7 @@ app.post("/api/view/:videoId", async (req, res, next) => {
 app.post("/api/like/:videoId", requireLogin, async (req, res, next) => {
   try {
     const { videoId } = req.params;
+    if (!isValidVideoId(videoId)) return res.status(400).json({ success: false, message: "Invalid video id" });
     const user = await pool.query("SELECT handle FROM users WHERE username = $1", [req.session.user]);
     const handle = user.rows[0]?.handle;
     if (!handle) return res.status(401).json({ success: false });
@@ -461,6 +545,7 @@ app.post("/api/like/:videoId", requireLogin, async (req, res, next) => {
 app.post("/api/save/:videoId", requireLogin, async (req, res, next) => {
   try {
     const { videoId } = req.params;
+    if (!isValidVideoId(videoId)) return res.status(400).json({ success: false, message: "Invalid video id" });
     const user = await pool.query("SELECT handle FROM users WHERE username = $1", [req.session.user]);
     const handle = user.rows[0]?.handle;
     if (!handle) return res.status(401).json({ success: false });
@@ -514,9 +599,13 @@ app.get("/api/saved_videos", requireLogin, async (req, res, next) => {
 app.post("/api/watch_later/:videoId", requireLogin, async (req, res, next) => {
   try {
     const { videoId } = req.params;
+    if (!isValidVideoId(videoId)) return res.status(400).json({ success: false, message: "Invalid video id" });
     const user = await pool.query("SELECT handle FROM users WHERE username = $1", [req.session.user]);
     const handle = user.rows[0]?.handle;
     if (!handle) return res.status(401).json({ success: false });
+
+    const videoCheck = await pool.query("SELECT id FROM videos WHERE id = $1", [videoId]);
+    if (!videoCheck.rows.length) return res.status(404).json({ success: false, message: "Video not found" });
 
     const existing = await pool.query("SELECT 1 FROM watch_later WHERE user_handle = $1 AND video_id = $2", [handle, videoId]);
     if (existing.rows.length > 0) {
@@ -551,12 +640,15 @@ app.get("/api/watch_later", requireLogin, async (req, res, next) => {
 
 app.post("/api/follow", requireLogin, async (req, res, next) => {
   try {
-    const { target_handle } = req.body;
+    const target_handle = normalizeText(req.body.target_handle, 80);
     if (!target_handle) return res.status(400).json({ success: false });
 
     const userResult = await pool.query("SELECT handle FROM users WHERE username = $1", [req.session.user]);
     const myHandle = userResult.rows[0]?.handle;
     if (myHandle === target_handle) return res.status(400).json({ success: false, message: "Cannot follow yourself" });
+
+    const targetUser = await pool.query("SELECT handle FROM users WHERE handle = $1", [target_handle]);
+    if (!targetUser.rows.length) return res.status(404).json({ success: false, message: "User not found" });
 
     const existing = await pool.query("SELECT 1 FROM follows WHERE follower_handle = $1 AND following_handle = $2", [myHandle, target_handle]);
     if (existing.rows.length > 0) {
@@ -593,7 +685,8 @@ app.get("/api/comments/:videoId", async (req, res, next) => {
 app.post("/api/comments/:videoId", requireLogin, async (req, res, next) => {
   try {
     const { videoId } = req.params;
-    const { content } = req.body;
+    const content = normalizeText(req.body.content, 500);
+    if (!isValidVideoId(videoId)) return res.status(400).json({ success: false, message: "Invalid video id" });
     if (!content) return res.status(400).json({ success: false, message: "Content required" });
 
     // Check video exists
@@ -676,11 +769,19 @@ app.get("/api/messages", requireLogin, async (req, res, next) => {
 
 app.post("/api/messages/send", requireLogin, async (req, res, next) => {
   try {
-    const { receiver_handle, content } = req.body;
+    const receiver_handle = normalizeText(req.body.receiver_handle, 80);
+    const content = normalizeText(req.body.content, 1000);
     if (!receiver_handle || !content) return res.status(400).json({ success: false });
 
     const user = await pool.query("SELECT handle FROM users WHERE username = $1", [req.session.user]);
     const senderHandle = user.rows[0]?.handle;
+    if (!senderHandle || senderHandle === receiver_handle) {
+      return res.status(400).json({ success: false, message: "Invalid conversation target" });
+    }
+
+    const receiver = await pool.query("SELECT handle FROM users WHERE handle = $1", [receiver_handle]);
+    if (!receiver.rows.length) return res.status(404).json({ success: false, message: "User not found" });
+
     const result = await pool.query(
       "INSERT INTO messages (sender_handle, receiver_handle, content) VALUES ($1, $2, $3) RETURNING *",
       [senderHandle, receiver_handle, content]
@@ -908,7 +1009,7 @@ app.post("/api/playlists/add", requireLogin, async (req, res, next) => {
 
 app.post("/api/feedback", requireLogin, async (req, res, next) => {
   try {
-    const { content } = req.body;
+    const content = normalizeText(req.body.content, 1000);
     if (!content) return res.status(400).json({ success: false, message: "Content required" });
 
     const user = await pool.query("SELECT handle FROM users WHERE username = $1", [req.session.user]);
@@ -931,6 +1032,30 @@ app.post("/api/verify/request", requireLogin, async (req, res, next) => {
     if (existing.rows.length > 0) return res.status(400).json({ success: false, message: "Request already pending" });
 
     await pool.query("INSERT INTO verification_requests (user_handle) VALUES ($1)", [handle]);
+    return res.json({ success: true });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+app.post("/api/report/:videoId", requireLogin, async (req, res, next) => {
+  try {
+    const { videoId } = req.params;
+    if (!isValidVideoId(videoId)) return res.status(400).json({ success: false, message: "Invalid video id" });
+
+    const [user, video] = await Promise.all([
+      pool.query("SELECT handle FROM users WHERE username = $1", [req.session.user]),
+      pool.query("SELECT user_handle FROM videos WHERE id = $1", [videoId])
+    ]);
+
+    const actorHandle = user.rows[0]?.handle;
+    const ownerHandle = video.rows[0]?.user_handle;
+
+    if (!actorHandle || !ownerHandle) {
+      return res.status(404).json({ success: false, message: "Video not found" });
+    }
+
+    await createNotification(ownerHandle, actorHandle, "report", videoId);
     return res.json({ success: true });
   } catch (error) {
     return next(error);
@@ -1025,7 +1150,13 @@ if (fs.existsSync(frontendDist)) {
 // Global error handler
 app.use((error, _req, res, _next) => {
   console.error(error);
-  res.status(500).json({ success: false, message: "Server error" });
+  if (error instanceof multer.MulterError) {
+    return res.status(400).json({ success: false, message: error.message });
+  }
+  if (error.message === "Only video uploads are allowed" || error.message === "Not allowed by CORS") {
+    return res.status(400).json({ success: false, message: error.message });
+  }
+  return res.status(500).json({ success: false, message: "Server error" });
 });
 
 // ── Socket.IO ─────────────────────────────────────────────────────────────────
