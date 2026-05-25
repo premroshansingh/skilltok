@@ -25,3 +25,5 @@ For local development, add DATABASE_URL to Backend/.env and run:
 ```bash
 npm run dev
 ```
+
+Hello Sarthak Bhai 
